@@ -374,9 +374,7 @@ class StorageManagerAPI {
         }
 
         if (r?.status === 'pending_approval') {
-            // مستخدم عادي — ارجع الـ cache للقديم وأخبره
             await this.loadAllFromSupabase();
-            // أظهر toast للمستخدم
             window.dispatchEvent(new CustomEvent('approval:pending', {
                 detail: { message: 'تم إرسال طلبك للأدمن — سيُطبَّق بعد الموافقة ✅' }
             }));
@@ -384,8 +382,18 @@ class StorageManagerAPI {
         }
 
         if (r?.success) {
-            // أدمن — حدّث الـ cache من السيرفر
-            await this.loadAllFromSupabase();
+            // تحديث الـ cache محلياً فقط — بدون reload كامل من السيرفر
+            if (!this._cache) this._cache = {};
+            if (!this._cache[key]) this._cache[key] = [];
+            if (action === 'create') {
+                this._cache[key].push(r.data || item);
+            } else if (action === 'update') {
+                const idx = this._cache[key].findIndex(x => x.id === item.id);
+                if (idx !== -1) this._cache[key][idx] = r.data || item;
+                else this._cache[key].push(r.data || item);
+            } else if (action === 'delete') {
+                this._cache[key] = this._cache[key].filter(x => x.id !== item.id);
+            }
             return { success: true, pending: false };
         }
 
