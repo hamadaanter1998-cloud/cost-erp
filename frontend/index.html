@@ -4866,12 +4866,35 @@
                                 aggregated[mat.materialId].required += required;
                             });
                         });
-                        // Check stock
+                        // Check stock — نستخدم نفس حساب الأرصدة
+                        const purchaseOrders = storage.get('purchaseOrders') || [];
+                        const productionOrds = storage.get('productionOrders') || [];
                         const insufficient = [];
                         Object.entries(aggregated).forEach(([matId, info]) => {
                             const material = rawMaterials.find(m => m.id === matId);
-                            if (!material || material.quantity < info.required) {
-                                insufficient.push({ name: info.name, required: info.required, available: material ? material.quantity : 0 });
+                            if (!material) {
+                                insufficient.push({ name: info.name, required: info.required, available: 0 });
+                                return;
+                            }
+                            // حساب الرصيد الحالي = افتتاحي + مشتريات مستلمة - منصرف
+                            const opening = material.openingStock ?? material.quantity ?? 0;
+                            const purchased = purchaseOrders
+                                .filter(po => po.status === 'received')
+                                .reduce((s, po) => {
+                                    const it = (po.items||[]).find(i => i.materialId === matId);
+                                    return s + (it ? it.qty||0 : 0);
+                                }, 0);
+                            const consumed = productionOrds.reduce((s, po) => {
+                                const entry = (po.materials||[]).find(m => m.materialId === matId);
+                                if (entry) return s + (entry.requiredQty||0);
+                                return s + (po.subOrders||[]).reduce((ss, sub) => {
+                                    const sm = (sub.materials||[]).find(m => m.materialId === matId);
+                                    return ss + (sm ? sm.requiredQty||0 : 0);
+                                }, 0);
+                            }, 0);
+                            const available = opening + purchased - consumed;
+                            if (available < info.required) {
+                                insufficient.push({ name: info.name, required: info.required, available });
                             }
                         });
                         if (insufficient.length > 0) {
@@ -5032,10 +5055,25 @@
                 const productionOrders = storage.get('productionOrders') || [];
 
                 // التحقق من كفاية المخزون قبل الخصم
+                const purchaseOrders2 = storage.get('purchaseOrders') || [];
+                const productionOrds2 = storage.get('productionOrders') || [];
                 const stockShortages = [];
                 Object.entries(aggregated).forEach(([matId, info]) => {
                     const mat = rawMaterials.find(m => m.id === matId);
-                    const available = mat ? mat.quantity : 0;
+                    if (!mat) { stockShortages.push(`${info.name}: المادة غير موجودة`); return; }
+                    const opening = mat.openingStock ?? mat.quantity ?? 0;
+                    const purchased = purchaseOrders2
+                        .filter(po => po.status === 'received')
+                        .reduce((s, po) => { const it = (po.items||[]).find(i => i.materialId === matId); return s + (it ? it.qty||0 : 0); }, 0);
+                    const consumed = productionOrds2.reduce((s, po) => {
+                        const entry = (po.materials||[]).find(m => m.materialId === matId);
+                        if (entry) return s + (entry.requiredQty||0);
+                        return s + (po.subOrders||[]).reduce((ss, sub) => {
+                            const sm = (sub.materials||[]).find(m => m.materialId === matId);
+                            return ss + (sm ? sm.requiredQty||0 : 0);
+                        }, 0);
+                    }, 0);
+                    const available = opening + purchased - consumed;
                     if (available < info.required) {
                         stockShortages.push(`${info.name}: مطلوب ${info.required.toFixed(2)}، متوفر ${available.toFixed(2)}`);
                     }
