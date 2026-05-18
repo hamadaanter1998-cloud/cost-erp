@@ -112,7 +112,9 @@ const AuthAPI = {
     async login(email, password) {
         const result = await api.post('/auth/login', { email, password });
         if (result?.success) {
-            TokenManager.set(result.token, result.refresh_token);
+            const accessToken  = result.session?.access_token  || result.token;
+            const refreshToken = result.session?.refresh_token || result.refresh_token;
+            TokenManager.set(accessToken, refreshToken);
         }
         return result;
     },
@@ -141,7 +143,9 @@ const AuthAPI = {
         }).then(r => r.json()).catch(() => null);
 
         if (result?.success) {
-            TokenManager.set(result.token, result.refresh_token);
+            const accessToken  = result.session?.access_token  || result.token;
+            const refreshToken2 = result.session?.refresh_token || result.refresh_token;
+            TokenManager.set(accessToken, refreshToken2);
             return true;
         }
         return false;
