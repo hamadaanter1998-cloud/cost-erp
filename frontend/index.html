@@ -5895,17 +5895,15 @@
                     `<option value="${s.id}" data-name="${s.name}" ${order && order.supplierId === s.id ? 'selected' : ''}>${s.name}</option>`
                 ).join('');
 
-                const existingItems = order ? (order.items || []) : [];
-                const itemsJson = JSON.stringify(existingItems).replace(/"/g, '&quot;');
+                const existingItems = order ? JSON.parse(JSON.stringify(order.items || [])) : [];
+                // حفظ الأصناف مباشرة في window قبل فتح الـ modal
+                window._poItems = existingItems;
+                window._poRawMats = rawMats;
 
                 const statusOpts = ['draft','pending','approved','received','cancelled'];
                 const statusAr = { draft:'مسودة', pending:'بانتظار الموافقة', approved:'معتمد', received:'مستلم', cancelled:'ملغي' };
                 const statusSelect = statusOpts.map(s =>
                     `<option value="${s}" ${order && order.status === s ? 'selected' : (s === 'draft' && !order ? 'selected' : '')}>${statusAr[s]}</option>`
-                ).join('');
-
-                const rawMatOptions = rawMats.map(m =>
-                    `<option value="${m.id}" data-name="${m.name}" data-unit="${m.unit||''}" data-price="${m.costPrice||0}">${m.name} (${m.unit||''})</option>`
                 ).join('');
 
                 Swal.fire({
@@ -5925,6 +5923,10 @@
                             .po-totals{background:#f8f9fa;border-radius:8px;padding:0.75rem;margin-top:0.75rem;text-align:right;}
                             .po-totals div{display:flex;justify-content:space-between;padding:0.2rem 0;font-size:0.88rem;}
                             .po-totals .total-row{font-weight:800;font-size:1rem;color:var(--primary);border-top:1px solid #ddd;padding-top:0.5rem;margin-top:0.25rem;}
+                            #poSearchResults{position:absolute;background:#fff;border:1px solid #ddd;border-radius:6px;max-height:180px;overflow-y:auto;z-index:9999;width:220px;box-shadow:0 4px 12px rgba(0,0,0,0.15);}
+                            #poSearchResults div{padding:0.4rem 0.75rem;cursor:pointer;font-size:0.82rem;text-align:right;}
+                            #poSearchResults div:hover{background:#f0f4ff;}
+                            .po-search-wrap{position:relative;display:inline-block;}
                         </style>
                         <div id="purchaseForm" style="text-align:right;">
                             <div class="form-row">
@@ -5942,7 +5944,7 @@
                                     <label>المورد *</label>
                                     <select id="poSupplier" class="form-control">
                                         <option value="">-- اختر مورد --</option>
-                                        ${supplierOptions}
+                                        ${suppliers.map(s => `<option value="${s.id}" data-name="${s.name}" ${order && order.supplierId === s.id ? 'selected' : ''}>${s.name}</option>`).join('')}
                                     </select>
                                 </div>
                                 <div class="form-group">
@@ -5969,11 +5971,14 @@
                                 <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
                                     <strong style="font-size:0.9rem;"><i class="fas fa-list"></i> الأصناف</strong>
                                     <div style="display:flex;gap:0.5rem;align-items:center;">
-                                        <select id="poMatSelect" class="form-control" style="width:220px;font-size:0.8rem;">
-                                            <option value="">-- إضافة مادة خام --</option>
-                                            ${rawMatOptions}
-                                        </select>
-                                        <button type="button" onclick="app._poAddItem()" style="background:var(--primary);color:white;border:none;border-radius:6px;padding:0.3rem 0.75rem;cursor:pointer;font-size:0.82rem;">إضافة</button>
+                                        <div class="po-search-wrap">
+                                            <input type="text" id="poMatSearch" class="form-control"
+                                                style="width:220px;font-size:0.8rem;"
+                                                placeholder="🔍 ابحث عن مادة خام..."
+                                                oninput="app._poSearchMat(this.value)"
+                                                autocomplete="off">
+                                            <div id="poSearchResults" style="display:none;"></div>
+                                        </div>
                                         <button type="button" onclick="app._poAddCustomItem()" style="background:#6c757d;color:white;border:none;border-radius:6px;padding:0.3rem 0.75rem;cursor:pointer;font-size:0.82rem;">صنف مخصص</button>
                                     </div>
                                 </div>
@@ -5990,19 +5995,15 @@
                                 </div>
                             </div>
                         </div>
-                        <script>
-                            window._poItems = ${itemsJson ? itemsJson.replace(/&quot;/g, '"') : '[]'};
-                            (function init(){
-                                app._poRenderItems();
-                                document.getElementById('poTax').addEventListener('input', app._poCalcTotals);
-                            })();
-                        <\/script>
                     `,
                     showCancelButton: true,
                     confirmButtonText: order ? 'تحديث' : 'حفظ',
                     cancelButtonText: 'إلغاء',
+                    didOpen: () => {
+                        app._poRenderItems();
+                        document.getElementById('poTax')?.addEventListener('input', () => app._poCalcTotals());
+                    },
                     preConfirm: () => {
-                        const suppEl = document.getElementById('poSupplier');
                         const suppId = suppEl.value;
                         const suppName = suppEl.options[suppEl.selectedIndex]?.getAttribute('data-name') || '';
                         if (!suppId) { Swal.showValidationMessage('يرجى اختيار المورد'); return false; }
@@ -6046,20 +6047,42 @@
                 });
             }
 
-            _poAddItem() {
-                const sel = document.getElementById('poMatSelect');
-                if (!sel || !sel.value) return;
-                const opt = sel.options[sel.selectedIndex];
-                const name = opt.getAttribute('data-name') || opt.text;
-                const unit = opt.getAttribute('data-unit') || '';
-                const price = parseFloat(opt.getAttribute('data-price')) || 0;
+            _poSearchMat(query) {
+                const results = document.getElementById('poSearchResults');
+                if (!results) return;
+                const q = query.trim().toLowerCase();
+                if (!q) { results.style.display = 'none'; return; }
+
+                const mats = (window._poRawMats || storage.get('rawMaterials') || [])
+                    .filter(m => m.name.toLowerCase().includes(q))
+                    .slice(0, 8);
+
+                if (!mats.length) { results.style.display = 'none'; return; }
+
+                results.innerHTML = mats.map(m => `
+                    <div onclick="app._poAddItemById('${m.id}','${m.name.replace(/'/g,"\\'")}','${m.unit||''}',${m.costPrice||0})">
+                        <strong>${m.name}</strong>
+                        <span style="color:#64748b;font-size:0.75rem;margin-right:0.5rem;">${m.unit||''}</span>
+                        <span style="color:#10b981;font-size:0.75rem;">${(m.costPrice||0).toLocaleString('ar-SA')} ر.س</span>
+                    </div>`).join('');
+                results.style.display = 'block';
+            }
+
+            _poAddItemById(id, name, unit, price) {
                 if (!window._poItems) window._poItems = [];
-                if (window._poItems.find(i => i.materialId === sel.value)) {
-                    Swal.showValidationMessage && Swal.showValidationMessage('الصنف مضاف مسبقاً');
+                if (window._poItems.find(i => i.materialId === id)) {
+                    const input = document.getElementById('poMatSearch');
+                    if (input) { input.value = ''; }
+                    const results = document.getElementById('poSearchResults');
+                    if (results) results.style.display = 'none';
                     return;
                 }
-                window._poItems.push({ materialId: sel.value, name, unit, qty: 1, unitPrice: price });
+                window._poItems.push({ materialId: id, name, unit, qty: 1, unitPrice: price });
                 this._poRenderItems();
+                const input = document.getElementById('poMatSearch');
+                if (input) input.value = '';
+                const results = document.getElementById('poSearchResults');
+                if (results) results.style.display = 'none';
             }
 
             _poAddCustomItem() {
