@@ -2074,7 +2074,7 @@
                         <div class="form-group"><label>رقم الفاتورة</label><input type="text" id="rmInvoice" class="form-control" value="${material ? material.invoiceNo : 'INV-'+Math.floor(Math.random()*9000+1000)}"></div>
                         <div class="form-group"><label>المورد</label><select id="rmSupplier" class="form-control"><option value="">اختر المورد</option>${suppliers.map(s=>`<option value="${s.name}" ${material&&material.supplier===s.name?'selected':''}>${s.name}</option>`).join('')}</select></div>
                         <div class="form-group"><label>تاريخ الشراء</label><input type="date" id="rmDate" class="form-control" value="${material ? material.purchaseDate : new Date().toISOString().split('T')[0]}"></div>
-                        <div class="form-group"><label>الكمية</label><input type="number" id="rmQty" class="form-control" step="0.01" value="${material ? material.quantity : ''}"></div>
+                        <div class="form-group"><label>الرصيد الافتتاحي</label><input type="number" id="rmQty" class="form-control" step="0.01" value="${material ? (material.openingStock ?? material.quantity) : ''}" placeholder="الكمية عند الإضافة"></div>
                         <div class="form-group"><label>الحد الأدنى</label><input type="number" id="rmMinStock" class="form-control" step="0.01" value="${material ? material.minStock : '50'}"></div>
                     `,
                     showCancelButton: true,
@@ -2097,6 +2097,7 @@
                             supplier: document.getElementById('rmSupplier').value,
                             purchaseDate: document.getElementById('rmDate').value,
                             quantity,
+                            openingStock: quantity,
                             minStock: parseFloat(document.getElementById('rmMinStock').value)
                         };
                     }
@@ -2198,7 +2199,6 @@
             }
 
             _renderRmBalances() {
-                // إخفاء الجدول الأصلي وعناصر البحث
                 const tableArea = document.getElementById('rmTableArea');
                 if (tableArea) tableArea.style.display = 'none';
                 const subContainer = document.getElementById('rmSubTabsContainer');
@@ -2208,24 +2208,50 @@
 
                 const rawMaterials   = storage.get('rawMaterials')   || [];
                 const purchaseOrders = storage.get('purchaseOrders') || [];
+                const productionOrds = storage.get('productionOrders') || [];
 
                 const balances = rawMaterials.map(mat => {
-                    const relatedOrders = purchaseOrders.filter(po =>
-                        (po.items || []).some(item => item.materialId === mat.id)
-                    );
-                    const totalPurchased = relatedOrders.reduce((sum, po) => {
-                        const item = (po.items || []).find(i => i.materialId === mat.id);
-                        return sum + (item ? (item.qty || 0) : 0);
+                    // الرصيد الافتتاحي
+                    const opening = mat.openingStock ?? mat.quantity ?? 0;
+
+                    // المشتريات: كل أوامر الشراء المستلمة التي تحتوي على هذه المادة
+                    const purchasedQty = purchaseOrders
+                        .filter(po => po.status === 'received')
+                        .reduce((sum, po) => {
+                            const item = (po.items||[]).find(i => i.materialId === mat.id);
+                            return sum + (item ? (item.qty||0) : 0);
+                        }, 0);
+
+                    // المنصرف: من أوامر الإنتاج (materials array داخل كل أمر)
+                    const consumedQty = productionOrds.reduce((sum, po) => {
+                        const mats = po.materials || [];
+                        const entry = mats.find(m => m.materialId === mat.id);
+                        if (entry) return sum + (entry.requiredQty||0);
+                        // fallback: subOrders
+                        const fromSubs = (po.subOrders||[]).reduce((s, sub) => {
+                            const sm = (sub.materials||[]).find(m => m.materialId === mat.id || m.id === mat.id);
+                            return s + (sm ? (sm.requiredQty||0) : 0);
+                        }, 0);
+                        return sum + fromSubs;
                     }, 0);
-                    const stockPct    = mat.minStock > 0 ? Math.min(100, (mat.quantity / mat.minStock) * 100) : 100;
-                    const stockStatus = mat.quantity <= 0 ? 'نفد' : mat.quantity <= (mat.minStock || 0) ? 'منخفض' : 'كافي';
-                    const stockColor  = mat.quantity <= 0 ? '#dc3545' : mat.quantity <= (mat.minStock || 0) ? '#f97316' : '#10b981';
-                    return { ...mat, totalPurchased, relatedOrders, stockPct, stockStatus, stockColor };
+
+                    // الحالي = افتتاحي + مشتريات - منصرف
+                    const current = opening + purchasedQty - consumedQty;
+
+                    const stockStatus = current <= 0 ? 'نفد' : current <= (mat.minStock||0) ? 'منخفض' : 'كافي';
+                    const stockColor  = current <= 0 ? '#dc3545' : current <= (mat.minStock||0) ? '#f97316' : '#10b981';
+
+                    // أوامر الشراء المرتبطة
+                    const relatedOrders = purchaseOrders.filter(po =>
+                        (po.items||[]).some(i => i.materialId === mat.id)
+                    );
+
+                    return { ...mat, opening, purchasedQty, consumedQty, current, stockStatus, stockColor, relatedOrders };
                 });
 
-                const totalMatsValue = balances.reduce((s, m) => s + (m.quantity||0)*(m.costPrice||0), 0);
-                const lowStock  = balances.filter(m => m.quantity > 0 && m.quantity <= (m.minStock||0)).length;
-                const outStock  = balances.filter(m => m.quantity <= 0).length;
+                const totalValue = balances.reduce((s,m) => s + m.current * (m.costPrice||0), 0);
+                const lowStock   = balances.filter(m => m.current > 0 && m.current <= (m.minStock||0)).length;
+                const outStock   = balances.filter(m => m.current <= 0).length;
 
                 const html = `
                     <div id="rmBalancesView">
@@ -2236,7 +2262,7 @@
                             </div>
                             <div class="stat-card card-purple">
                                 <div class="icon bg-purple"><i class="fas fa-coins"></i></div>
-                                <div class="info"><p>قيمة المخزون</p><h3 style="font-size:1.1rem;">${(totalMatsValue/1000).toFixed(1)}k</h3><span class="trend trend-up">ريال</span></div>
+                                <div class="info"><p>قيمة المخزون الحالي</p><h3 style="font-size:1.1rem;">${(totalValue/1000).toFixed(1)}k</h3><span class="trend trend-up">ريال</span></div>
                             </div>
                             <div class="stat-card card-orange">
                                 <div class="icon bg-orange"><i class="fas fa-exclamation-triangle"></i></div>
@@ -2261,46 +2287,46 @@
                                     <thead>
                                         <tr>
                                             <th>المادة</th>
-                                            <th>النوع</th>
-                                            <th>الكمية الحالية</th>
-                                            <th>الحد الأدنى</th>
-                                            <th>مستوى المخزون</th>
+                                            <th>الوحدة</th>
+                                            <th style="background:#dbeafe;color:#1e40af;">الرصيد الافتتاحي</th>
+                                            <th style="background:#dcfce7;color:#166534;">+ المشتريات</th>
+                                            <th style="background:#fee2e2;color:#991b1b;">- المنصرف</th>
+                                            <th style="background:#f0fdf4;color:#065f46;font-size:1rem;">= الرصيد الحالي</th>
                                             <th>الحالة</th>
-                                            <th>إجمالي المشتريات</th>
-                                            <th>قيمة المخزون</th>
                                             <th>أوامر الشراء</th>
                                             <th>إجراء</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         ${balances.length === 0
-                                            ? `<tr><td colspan="10"><div class="empty-state" style="padding:2rem;"><i class="fas fa-boxes"></i><h3>لا توجد مواد خام</h3></div></td></tr>`
+                                            ? `<tr><td colspan="9"><div class="empty-state" style="padding:2rem;"><i class="fas fa-boxes"></i><h3>لا توجد مواد خام</h3></div></td></tr>`
                                             : balances.map(mat => `
                                             <tr data-matname="${mat.name.toLowerCase()}">
                                                 <td>
                                                     <span style="font-weight:700;color:var(--primary);cursor:pointer;text-decoration:underline dotted;"
                                                           onclick="app.showMatMovement('${mat.id}')"
-                                                          title="عرض حركة المادة من المشتريات">
+                                                          title="عرض حركة المادة">
                                                         ${mat.name}
                                                     </span>
-                                                    <br><small style="color:var(--text-secondary);font-family:monospace;">${mat.id.slice(0,8)}</small>
+                                                </td>
+                                                <td style="color:var(--text-secondary);">${mat.unit||''}</td>
+                                                <td style="background:#eff6ff;text-align:center;font-weight:600;">
+                                                    ${mat.opening.toLocaleString('ar-SA')}
+                                                </td>
+                                                <td style="background:#f0fdf4;text-align:center;font-weight:600;color:#166534;">
+                                                    ${mat.purchasedQty > 0 ? '+' : ''}${mat.purchasedQty.toLocaleString('ar-SA')}
+                                                </td>
+                                                <td style="background:#fef2f2;text-align:center;font-weight:600;color:#991b1b;">
+                                                    ${mat.consumedQty > 0 ? '-' : ''}${mat.consumedQty.toLocaleString('ar-SA')}
+                                                </td>
+                                                <td style="background:#ecfdf5;text-align:center;">
+                                                    <strong style="font-size:1.05rem;color:${mat.stockColor};">${mat.current.toLocaleString('ar-SA')}</strong>
                                                 </td>
                                                 <td>
-                                                    <span style="background:${mat.materialType==='packaging'?'#7c3aed':'#1e6f9f'};color:#fff;padding:2px 8px;border-radius:1rem;font-size:0.72rem;font-weight:700;">
-                                                        ${mat.materialType==='packaging'?'تعبئة':'خام'}
+                                                    <span style="background:${mat.stockColor};color:#fff;padding:2px 10px;border-radius:1rem;font-size:0.78rem;font-weight:700;">
+                                                        ${mat.stockStatus}
                                                     </span>
                                                 </td>
-                                                <td><strong style="font-size:1rem;">${(mat.quantity||0).toLocaleString('ar-SA')}</strong> <span style="color:var(--text-secondary);font-size:0.8rem;">${mat.unit||''}</span></td>
-                                                <td>${(mat.minStock||0).toLocaleString('ar-SA')} ${mat.unit||''}</td>
-                                                <td style="min-width:130px;">
-                                                    <div style="background:#e5e7eb;border-radius:1rem;height:8px;overflow:hidden;">
-                                                        <div style="background:${mat.stockColor};height:100%;width:${mat.stockPct}%;border-radius:1rem;"></div>
-                                                    </div>
-                                                    <small style="color:var(--text-secondary);">${mat.stockPct.toFixed(0)}%</small>
-                                                </td>
-                                                <td><span style="background:${mat.stockColor};color:#fff;padding:2px 10px;border-radius:1rem;font-size:0.78rem;font-weight:700;">${mat.stockStatus}</span></td>
-                                                <td><strong>${mat.totalPurchased.toLocaleString('ar-SA')}</strong> ${mat.unit||''}</td>
-                                                <td><strong style="color:var(--success);">${((mat.quantity||0)*(mat.costPrice||0)).toLocaleString('ar-SA',{minimumFractionDigits:2})}</strong> ر.س</td>
                                                 <td style="text-align:center;">
                                                     ${mat.relatedOrders.length === 0
                                                         ? '<span style="color:var(--text-secondary);font-size:0.8rem;">—</span>'
@@ -2308,7 +2334,7 @@
                                                     }
                                                 </td>
                                                 <td>
-                                                    <button class="btn btn-primary btn-sm" onclick="app.showPurchaseModal()" title="إنشاء أمر شراء" style="font-size:0.78rem;">
+                                                    <button class="btn btn-primary btn-sm" onclick="app.showPurchaseModal()" style="font-size:0.78rem;">
                                                         <i class="fas fa-shopping-cart"></i> شراء
                                                     </button>
                                                 </td>
@@ -2332,107 +2358,147 @@
             showMatMovement(matId) {
                 const rawMaterials   = storage.get('rawMaterials')   || [];
                 const purchaseOrders = storage.get('purchaseOrders') || [];
+                const productionOrds = storage.get('productionOrders') || [];
                 const mat = rawMaterials.find(m => m.id === matId);
                 if (!mat) return;
 
-                // كل أوامر الشراء التي تحتوي على هذه المادة
-                const movements = [];
-                purchaseOrders.forEach(po => {
-                    const item = (po.items || []).find(i => i.materialId === matId);
-                    if (item) {
-                        movements.push({
-                            orderNumber:  po.orderNumber,
-                            orderDate:    po.orderDate,
-                            supplierName: po.supplierName,
-                            status:       po.status,
-                            qty:          item.qty || 0,
-                            unitPrice:    item.unitPrice || 0,
-                            total:        (item.qty||0) * (item.unitPrice||0),
-                            poId:         po.id
+                const opening = mat.openingStock ?? mat.quantity ?? 0;
+
+                // المشتريات المستلمة
+                const purchaseMovements = [];
+                purchaseOrders
+                    .filter(po => po.status === 'received')
+                    .forEach(po => {
+                        const item = (po.items||[]).find(i => i.materialId === matId);
+                        if (item) purchaseMovements.push({
+                            date:  po.receivedDate || po.orderDate,
+                            ref:   po.orderNumber,
+                            from:  po.supplierName,
+                            qty:   item.qty || 0,
+                            type:  'purchase'
+                        });
+                    });
+
+                // المنصرف من أوامر الإنتاج
+                const consumeMovements = [];
+                productionOrds.forEach(po => {
+                    // materials array مباشرة
+                    const entry = (po.materials||[]).find(m => m.materialId === matId);
+                    if (entry && entry.requiredQty > 0) {
+                        consumeMovements.push({
+                            date: po.date ? new Date(po.date).toISOString().split('T')[0] : '—',
+                            ref:  po.id?.slice(0,8) || '—',
+                            from: po.productName || 'أمر إنتاج',
+                            qty:  entry.requiredQty,
+                            type: 'consume'
+                        });
+                    } else {
+                        // fallback subOrders
+                        (po.subOrders||[]).forEach(sub => {
+                            const sm = (sub.materials||[]).find(m => m.materialId === matId || m.id === matId);
+                            if (sm && sm.requiredQty > 0) {
+                                consumeMovements.push({
+                                    date: po.date ? new Date(po.date).toISOString().split('T')[0] : '—',
+                                    ref:  po.id?.slice(0,8) || '—',
+                                    from: sub.productName || po.productName || 'أمر إنتاج',
+                                    qty:  sm.requiredQty,
+                                    type: 'consume'
+                                });
+                            }
                         });
                     }
                 });
 
-                // ترتيب من الأحدث للأقدم
-                movements.sort((a,b) => new Date(b.orderDate||0) - new Date(a.orderDate||0));
+                const totalPurchased = purchaseMovements.reduce((s,m) => s + m.qty, 0);
+                const totalConsumed  = consumeMovements.reduce((s,m)  => s + m.qty, 0);
+                const current        = opening + totalPurchased - totalConsumed;
+                const stockColor     = current <= 0 ? '#dc3545' : current <= (mat.minStock||0) ? '#f97316' : '#10b981';
 
-                const totalQty  = movements.reduce((s,m) => s + m.qty, 0);
-                const totalVal  = movements.reduce((s,m) => s + m.total, 0);
-                const received  = movements.filter(m => m.status === 'received');
-                const recvQty   = received.reduce((s,m) => s + m.qty, 0);
+                // دمج الحركات مرتبة بالتاريخ
+                const allMoves = [
+                    { date: mat.createdAt ? new Date(mat.createdAt).toISOString().split('T')[0] : '—', ref: 'رصيد افتتاحي', from: '—', qty: opening, type: 'opening' },
+                    ...purchaseMovements,
+                    ...consumeMovements
+                ].sort((a,b) => (a.date||'').localeCompare(b.date||''));
 
-                const statusLabel = { draft:'مسودة', pending:'بانتظار', approved:'معتمد', received:'مستلم', cancelled:'ملغي' };
-                const statusClass = { draft:'status-secondary', pending:'status-warning', approved:'status-info', received:'status-success', cancelled:'status-danger' };
+                // حساب رصيد متراكم
+                let running = 0;
+                const movesWithBalance = allMoves.map(m => {
+                    if (m.type === 'opening')  running += m.qty;
+                    if (m.type === 'purchase') running += m.qty;
+                    if (m.type === 'consume')  running -= m.qty;
+                    return { ...m, balance: running };
+                });
+
+                const typeLabel = { opening:'افتتاحي', purchase:'وارد (مشتريات)', consume:'صادر (إنتاج)' };
+                const typeColor = { opening:'#3b82f6', purchase:'#10b981', consume:'#ef4444' };
+                const typeIcon  = { opening:'fas fa-play-circle', purchase:'fas fa-arrow-down', consume:'fas fa-arrow-up' };
 
                 Swal.fire({
-                    title: `<i class="fas fa-history"></i> حركة مشتريات: ${mat.name}`,
-                    width: '750px',
+                    title: `<i class="fas fa-history"></i> حركة مخزون: ${mat.name}`,
+                    width: '820px',
                     html: `
                         <div style="text-align:right;">
-                            <!-- إحصائيات سريعة -->
-                            <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0.75rem;margin-bottom:1rem;">
-                                <div style="background:#eff6ff;border-radius:10px;padding:0.75rem;text-align:center;">
-                                    <div style="font-size:0.75rem;color:#1e6f9f;font-weight:600;">الكمية الحالية</div>
-                                    <div style="font-size:1.3rem;font-weight:800;color:#1e6f9f;">${(mat.quantity||0).toLocaleString('ar-SA')}</div>
-                                    <div style="font-size:0.72rem;color:#64748b;">${mat.unit||''}</div>
+                            <!-- ملخص الأرصدة -->
+                            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.6rem;margin-bottom:1rem;">
+                                <div style="background:#eff6ff;border-radius:10px;padding:0.65rem;text-align:center;border-top:3px solid #3b82f6;">
+                                    <div style="font-size:0.72rem;color:#1e40af;font-weight:700;">الرصيد الافتتاحي</div>
+                                    <div style="font-size:1.2rem;font-weight:800;color:#1e40af;">${opening.toLocaleString('ar-SA')}</div>
+                                    <div style="font-size:0.7rem;color:#64748b;">${mat.unit||''}</div>
                                 </div>
-                                <div style="background:#f0fdf4;border-radius:10px;padding:0.75rem;text-align:center;">
-                                    <div style="font-size:0.75rem;color:#10b981;font-weight:600;">إجمالي ما تم شراؤه</div>
-                                    <div style="font-size:1.3rem;font-weight:800;color:#10b981;">${totalQty.toLocaleString('ar-SA')}</div>
-                                    <div style="font-size:0.72rem;color:#64748b;">${mat.unit||''}</div>
+                                <div style="background:#f0fdf4;border-radius:10px;padding:0.65rem;text-align:center;border-top:3px solid #10b981;">
+                                    <div style="font-size:0.72rem;color:#166534;font-weight:700;">+ المشتريات</div>
+                                    <div style="font-size:1.2rem;font-weight:800;color:#10b981;">+${totalPurchased.toLocaleString('ar-SA')}</div>
+                                    <div style="font-size:0.7rem;color:#64748b;">${mat.unit||''}</div>
                                 </div>
-                                <div style="background:#fefce8;border-radius:10px;padding:0.75rem;text-align:center;">
-                                    <div style="font-size:0.75rem;color:#f97316;font-weight:600;">إجمالي المبلغ المنفق</div>
-                                    <div style="font-size:1.1rem;font-weight:800;color:#f97316;">${totalVal.toLocaleString('ar-SA',{minimumFractionDigits:2})}</div>
-                                    <div style="font-size:0.72rem;color:#64748b;">ريال</div>
+                                <div style="background:#fef2f2;border-radius:10px;padding:0.65rem;text-align:center;border-top:3px solid #ef4444;">
+                                    <div style="font-size:0.72rem;color:#991b1b;font-weight:700;">- المنصرف</div>
+                                    <div style="font-size:1.2rem;font-weight:800;color:#ef4444;">-${totalConsumed.toLocaleString('ar-SA')}</div>
+                                    <div style="font-size:0.7rem;color:#64748b;">${mat.unit||''}</div>
+                                </div>
+                                <div style="background:#ecfdf5;border-radius:10px;padding:0.65rem;text-align:center;border-top:3px solid ${stockColor};">
+                                    <div style="font-size:0.72rem;font-weight:700;color:${stockColor};">= الرصيد الحالي</div>
+                                    <div style="font-size:1.2rem;font-weight:800;color:${stockColor};">${current.toLocaleString('ar-SA')}</div>
+                                    <div style="font-size:0.7rem;color:#64748b;">${mat.unit||''}</div>
                                 </div>
                             </div>
 
                             <!-- جدول الحركات -->
-                            ${movements.length === 0
-                                ? `<div style="text-align:center;padding:2rem;color:#94a3b8;">
-                                       <i class="fas fa-inbox" style="font-size:2rem;margin-bottom:0.5rem;display:block;"></i>
-                                       لا توجد أوامر شراء لهذه المادة بعد
-                                   </div>`
-                                : `<div style="max-height:320px;overflow-y:auto;border-radius:8px;border:1px solid #e2e8f0;">
-                                    <table style="width:100%;border-collapse:collapse;font-size:0.83rem;">
-                                        <thead style="position:sticky;top:0;background:#f8fafc;z-index:1;">
-                                            <tr>
-                                                <th style="padding:0.5rem 0.75rem;text-align:right;border-bottom:1px solid #e2e8f0;font-weight:700;">رقم الأمر</th>
-                                                <th style="padding:0.5rem;text-align:right;border-bottom:1px solid #e2e8f0;font-weight:700;">المورد</th>
-                                                <th style="padding:0.5rem;text-align:right;border-bottom:1px solid #e2e8f0;font-weight:700;">التاريخ</th>
-                                                <th style="padding:0.5rem;text-align:center;border-bottom:1px solid #e2e8f0;font-weight:700;">الكمية</th>
-                                                <th style="padding:0.5rem;text-align:center;border-bottom:1px solid #e2e8f0;font-weight:700;">سعر الوحدة</th>
-                                                <th style="padding:0.5rem;text-align:center;border-bottom:1px solid #e2e8f0;font-weight:700;">الإجمالي</th>
-                                                <th style="padding:0.5rem;text-align:center;border-bottom:1px solid #e2e8f0;font-weight:700;">الحالة</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            ${movements.map((m,i) => `
+                            <div style="max-height:340px;overflow-y:auto;border-radius:8px;border:1px solid #e2e8f0;">
+                                <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+                                    <thead style="position:sticky;top:0;background:#f8fafc;z-index:1;">
+                                        <tr>
+                                            <th style="padding:0.5rem 0.75rem;text-align:right;border-bottom:1px solid #e2e8f0;">التاريخ</th>
+                                            <th style="padding:0.5rem;text-align:right;border-bottom:1px solid #e2e8f0;">نوع الحركة</th>
+                                            <th style="padding:0.5rem;text-align:right;border-bottom:1px solid #e2e8f0;">المرجع</th>
+                                            <th style="padding:0.5rem;text-align:right;border-bottom:1px solid #e2e8f0;">البيان</th>
+                                            <th style="padding:0.5rem;text-align:center;border-bottom:1px solid #e2e8f0;">الكمية</th>
+                                            <th style="padding:0.5rem;text-align:center;border-bottom:1px solid #e2e8f0;">الرصيد</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${movesWithBalance.length === 0
+                                            ? `<tr><td colspan="6" style="text-align:center;padding:2rem;color:#94a3b8;">لا توجد حركات</td></tr>`
+                                            : movesWithBalance.map((m,i) => `
                                             <tr style="background:${i%2===0?'#fff':'#f8fafc'};">
-                                                <td style="padding:0.5rem 0.75rem;font-family:monospace;color:var(--primary);font-weight:700;">${m.orderNumber}</td>
-                                                <td style="padding:0.5rem;">${m.supplierName}</td>
-                                                <td style="padding:0.5rem;color:#64748b;">${m.orderDate ? new Date(m.orderDate).toLocaleDateString('ar-SA') : '—'}</td>
-                                                <td style="padding:0.5rem;text-align:center;font-weight:700;">${m.qty.toLocaleString('ar-SA')} ${mat.unit||''}</td>
-                                                <td style="padding:0.5rem;text-align:center;">${m.unitPrice.toLocaleString('ar-SA',{minimumFractionDigits:2})} ر.س</td>
-                                                <td style="padding:0.5rem;text-align:center;font-weight:700;color:#10b981;">${m.total.toLocaleString('ar-SA',{minimumFractionDigits:2})} ر.س</td>
-                                                <td style="padding:0.5rem;text-align:center;">
-                                                    <span class="status-badge ${statusClass[m.status]||'status-secondary'}" style="font-size:0.72rem;">${statusLabel[m.status]||m.status}</span>
+                                                <td style="padding:0.45rem 0.75rem;color:#64748b;font-size:0.8rem;">${m.date||'—'}</td>
+                                                <td style="padding:0.45rem 0.5rem;">
+                                                    <span style="background:${typeColor[m.type]};color:#fff;padding:2px 8px;border-radius:1rem;font-size:0.72rem;font-weight:700;">
+                                                        <i class="${typeIcon[m.type]}"></i> ${typeLabel[m.type]}
+                                                    </span>
+                                                </td>
+                                                <td style="padding:0.45rem 0.5rem;font-family:monospace;color:var(--primary);font-weight:700;font-size:0.8rem;">${m.ref}</td>
+                                                <td style="padding:0.45rem 0.5rem;">${m.from}</td>
+                                                <td style="padding:0.45rem 0.5rem;text-align:center;font-weight:700;color:${m.type==='consume'?'#ef4444':m.type==='purchase'?'#10b981':'#3b82f6'};">
+                                                    ${m.type==='consume'?'-':'+'}${m.qty.toLocaleString('ar-SA')} ${mat.unit||''}
+                                                </td>
+                                                <td style="padding:0.45rem 0.5rem;text-align:center;font-weight:800;color:${m.balance<=0?'#ef4444':m.balance<=(mat.minStock||0)?'#f97316':'#10b981'};">
+                                                    ${m.balance.toLocaleString('ar-SA')}
                                                 </td>
                                             </tr>`).join('')}
-                                        </tbody>
-                                        <tfoot style="background:#f1f5f9;font-weight:800;">
-                                            <tr>
-                                                <td colspan="3" style="padding:0.5rem 0.75rem;">الإجمالي</td>
-                                                <td style="padding:0.5rem;text-align:center;">${totalQty.toLocaleString('ar-SA')} ${mat.unit||''}</td>
-                                                <td></td>
-                                                <td style="padding:0.5rem;text-align:center;color:#10b981;">${totalVal.toLocaleString('ar-SA',{minimumFractionDigits:2})} ر.س</td>
-                                                <td></td>
-                                            </tr>
-                                        </tfoot>
-                                    </table>
-                                </div>`
-                            }
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     `,
                     showCancelButton: true,
