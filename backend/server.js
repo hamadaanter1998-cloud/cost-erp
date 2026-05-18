@@ -32,6 +32,9 @@ const supabase = require('./supabaseClient');
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// ✅ مطلوب على Render (وأي hosting بيستخدم reverse proxy)
+app.set('trust proxy', 1);
+
 // ============================================================
 // MIDDLEWARE
 // ============================================================
