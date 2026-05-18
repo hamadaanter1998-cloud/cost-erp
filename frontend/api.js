@@ -356,6 +356,8 @@ class StorageManagerAPI {
             notifications:    DataAPI.notifications,
             activityLog:      DataAPI.activityLog,
             purchaseOrders:   DataAPI.purchaseOrders
+        };
+        if (!apiMap[key]) return { success: false, error: 'unknown key' };
 
         let r;
         if (action === 'create') {
