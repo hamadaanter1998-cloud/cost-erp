@@ -6085,9 +6085,7 @@
                             if (idx !== -1) orders[idx] = po;
                         } else {
                             po = { id: crypto.randomUUID(), ...result.value, createdAt: new Date().toISOString() };
-                            orders.push(po);
                         }
-                        storage.set('purchaseOrders', orders);
                         const r = await storage.crud('purchaseOrders', order ? 'update' : 'create', po);
                         if (!r.pending) {
                             storage.showToast(order ? 'تم تحديث أمر الشراء' : 'تم إنشاء أمر الشراء');
