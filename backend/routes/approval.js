@@ -174,7 +174,12 @@ router.put('/requests/:id/approve', authMiddleware, async (req, res) => {
             'production_orders':  'production_orders',
             'saved_quotations':   'saved_quotations',
             'units':              'units',
-            'size_templates':     'size_templates'
+            'size_templates':     'size_templates',
+            'purchase_orders':    'purchase_orders',
+            'customers':          'customers',
+            'sales_orders':       'sales_orders',
+            'notifications':      'notifications',
+            'activity_log':       'activity_log'
         };
 
         // ─── معالجة reset_all بشكل مستقل ──────────────────────
@@ -182,7 +187,8 @@ router.put('/requests/:id/approve', authMiddleware, async (req, res) => {
             const tables = [
                 'raw_materials', 'products', 'suppliers', 'recipes',
                 'product_costings', 'production_orders', 'saved_quotations',
-                'activity_log', 'notifications', 'units', 'size_templates'
+                'activity_log', 'notifications', 'units', 'size_templates',
+                'purchase_orders', 'customers', 'sales_orders'
             ];
             await Promise.all(tables.map(t =>
                 supabase.from(t).delete().neq('id', '____nonexistent____')
