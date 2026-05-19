@@ -302,6 +302,70 @@ const TABLE_MAP = {
             createdBy:    r.created_by,
             createdAt:    r.created_at
         })
+    },
+
+    customers: {
+        table: 'customers',
+        toRow: c => ({
+            id:         c.id,
+            name:       c.name     || '',
+            phone:      c.phone    || '',
+            email:      c.email    || '',
+            address:    c.address  || '',
+            notes:      c.notes    || '',
+            created_by: c.createdBy || 'admin'
+        }),
+        fromRow: r => ({
+            id:        r.id,
+            name:      r.name,
+            phone:     r.phone,
+            email:     r.email,
+            address:   r.address,
+            notes:     r.notes,
+            createdBy: r.created_by,
+            createdAt: r.created_at
+        })
+    },
+
+    salesOrders: {
+        table: 'sales_orders',
+        toRow: o => ({
+            id:            o.id,
+            order_number:  o.orderNumber  || '',
+            customer_id:   o.customerId   || '',
+            customer_name: o.customerName || '',
+            status:        o.status       || 'draft',
+            order_date:    o.orderDate    || new Date().toISOString().split('T')[0],
+            delivery_date: o.deliveryDate || null,
+            items:         o.items        || [],
+            subtotal:      o.subtotal     || 0,
+            discount_pct:  o.discountPct  || 0,
+            discount_amt:  o.discountAmt  || 0,
+            tax_percent:   o.taxPercent   ?? 15,
+            tax_amount:    o.taxAmount    || 0,
+            total_amount:  o.totalAmount  || 0,
+            notes:         o.notes        || '',
+            created_by:    o.createdBy    || 'admin'
+        }),
+        fromRow: r => ({
+            id:           r.id,
+            orderNumber:  r.order_number,
+            customerId:   r.customer_id,
+            customerName: r.customer_name,
+            status:       r.status,
+            orderDate:    r.order_date,
+            deliveryDate: r.delivery_date,
+            items:        r.items || [],
+            subtotal:     r.subtotal,
+            discountPct:  r.discount_pct,
+            discountAmt:  r.discount_amt,
+            taxPercent:   r.tax_percent,
+            taxAmount:    r.tax_amount,
+            totalAmount:  r.total_amount,
+            notes:        r.notes,
+            createdBy:    r.created_by,
+            createdAt:    r.created_at
+        })
     }
 };
 
@@ -325,5 +389,7 @@ module.exports = {
     activityLogRouter:     createCrudRouter(TABLE_MAP.activityLog.table,     TABLE_MAP.activityLog),
 
     // ✅ أوامر الشراء — مع Approval workflow
-    purchaseOrdersRouter:  createApprovalCrudRouter(TABLE_MAP.purchaseOrders.table, TABLE_MAP.purchaseOrders)
+    purchaseOrdersRouter:  createApprovalCrudRouter(TABLE_MAP.purchaseOrders.table, TABLE_MAP.purchaseOrders),
+    customersRouter:       createApprovalCrudRouter(TABLE_MAP.customers.table,      TABLE_MAP.customers),
+    salesOrdersRouter:     createApprovalCrudRouter(TABLE_MAP.salesOrders.table,    TABLE_MAP.salesOrders)
 };

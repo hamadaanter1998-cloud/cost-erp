@@ -191,6 +191,8 @@ const DataAPI = {
     notifications:    createDataAPI('notifications'),
     activityLog:      createDataAPI('activity-log'),
     purchaseOrders:   createDataAPI('purchase-orders'),
+    customers:        createDataAPI('customers'),
+    salesOrders:      createDataAPI('sales-orders'),
 
     loadAll() {
         return api.get('/data/all');
@@ -355,7 +357,9 @@ class StorageManagerAPI {
             sizeTemplates:    DataAPI.sizeTemplates,
             notifications:    DataAPI.notifications,
             activityLog:      DataAPI.activityLog,
-            purchaseOrders:   DataAPI.purchaseOrders
+            purchaseOrders:   DataAPI.purchaseOrders,
+            customers:        DataAPI.customers,
+            salesOrders:      DataAPI.salesOrders
         };
         if (!apiMap[key]) return { success: false, error: 'unknown key' };
 
@@ -449,7 +453,9 @@ class StorageManagerAPI {
             sizeTemplates:    DataAPI.sizeTemplates,
             notifications:    DataAPI.notifications,
             activityLog:      DataAPI.activityLog,
-            purchaseOrders:   DataAPI.purchaseOrders
+            purchaseOrders:   DataAPI.purchaseOrders,
+            customers:        DataAPI.customers,
+            salesOrders:      DataAPI.salesOrders
         };
 
         if (!apiMap[key]) return;

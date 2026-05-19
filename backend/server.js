@@ -23,7 +23,9 @@ const {
     sizeTemplatesRouter,
     notificationsRouter,
     activityLogRouter,
-    purchaseOrdersRouter
+    purchaseOrdersRouter,
+    customersRouter,
+    salesOrdersRouter
 } = require('./routes/approvalData');
 
 const authMiddleware = require('./middleware/auth');
@@ -131,6 +133,8 @@ app.use('/api/size-templates',    authMiddleware, sizeTemplatesRouter);
 app.use('/api/notifications',     authMiddleware, notificationsRouter);
 app.use('/api/activity-log',      authMiddleware, activityLogRouter);
 app.use('/api/purchase-orders',   authMiddleware, purchaseOrdersRouter);
+app.use('/api/customers',         authMiddleware, customersRouter);
+app.use('/api/sales-orders',      authMiddleware, salesOrdersRouter);
 
 // Approval Workflow Routes
 app.use('/api/approval',          approvalRouter);
@@ -150,7 +154,9 @@ app.get('/api/data/all', authMiddleware, async (req, res) => {
             sizeTemplates:    { table: 'size_templates',      fromRow: r => ({ id: r.id, name: r.name, sizeLiters: r.size_liters, unitsPerCarton: r.units_per_carton }) },
             notifications:    { table: 'notifications',       fromRow: r => ({ id: r.id, message: r.message, type: r.type, read: r.read, date: r.created_at }) },
             activityLog:      { table: 'activity_log',        fromRow: r => ({ action: r.action, user: r.user_name, type: r.type, timestamp: r.created_at }) },
-            purchaseOrders:   { table: 'purchase_orders',     fromRow: r => ({ id: r.id, orderNumber: r.order_number, supplierId: r.supplier_id, supplierName: r.supplier_name, status: r.status, orderDate: r.order_date, expectedDate: r.expected_date, receivedDate: r.received_date, items: r.items || [], subtotal: r.subtotal, taxPercent: r.tax_percent, taxAmount: r.tax_amount, totalAmount: r.total_amount, notes: r.notes, createdBy: r.created_by, createdAt: r.created_at }) }
+            purchaseOrders:   { table: 'purchase_orders',     fromRow: r => ({ id: r.id, orderNumber: r.order_number, supplierId: r.supplier_id, supplierName: r.supplier_name, status: r.status, orderDate: r.order_date, expectedDate: r.expected_date, receivedDate: r.received_date, items: r.items || [], subtotal: r.subtotal, taxPercent: r.tax_percent, taxAmount: r.tax_amount, totalAmount: r.total_amount, notes: r.notes, createdBy: r.created_by, createdAt: r.created_at }) },
+            customers:        { table: 'customers',           fromRow: r => ({ id: r.id, name: r.name, phone: r.phone, email: r.email, address: r.address, notes: r.notes, createdBy: r.created_by, createdAt: r.created_at }) },
+            salesOrders:      { table: 'sales_orders',        fromRow: r => ({ id: r.id, orderNumber: r.order_number, customerId: r.customer_id, customerName: r.customer_name, status: r.status, orderDate: r.order_date, deliveryDate: r.delivery_date, items: r.items || [], subtotal: r.subtotal, discountPct: r.discount_pct, discountAmt: r.discount_amt, taxPercent: r.tax_percent, taxAmount: r.tax_amount, totalAmount: r.total_amount, notes: r.notes, createdBy: r.created_by, createdAt: r.created_at }) }
         };
 
         const result = {};
@@ -193,7 +199,7 @@ app.delete('/api/data/reset', authMiddleware, async (req, res) => {
             'raw_materials', 'products', 'suppliers', 'recipes',
             'product_costings', 'production_orders', 'saved_quotations',
             'activity_log', 'notifications', 'units', 'size_templates',
-            'purchase_orders'
+            'purchase_orders', 'customers', 'sales_orders'
         ];
 
         await Promise.all(tables.map(t =>
