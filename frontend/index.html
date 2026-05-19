@@ -4840,15 +4840,18 @@
                     },
                     preConfirm: () => {
                         const rawMaterials = storage.get('rawMaterials') || [];
+                        const recipesData  = storage.get('recipes')      || [];
                         const rows = document.querySelectorAll('#prodOrderItemsBody tr');
                         if (rows.length === 0) { Swal.showValidationMessage('أضف صنفاً واحداً على الأقل'); return false; }
                         const items = [];
                         for (const row of rows) {
-                            const productId = row.querySelector('.prod-item-product').value;
-                            const qty = parseInt(row.querySelector('.prod-item-qty').value);
-                            if (!productId || !qty || qty < 1) { Swal.showValidationMessage('يرجى اختيار المنتج والكمية لكل صنف'); return false; }
-                            const recipe = recipes.find(r => r.productId === productId);
-                            if (!recipe) { Swal.showValidationMessage('لا توجد تركيبة للمنتج: ' + productId); return false; }
+                            const productId = row.querySelector('.prod-item-product')?.value;
+                            const qty = parseInt(row.querySelector('.prod-item-qty')?.value);
+                            if (!productId) { Swal.showValidationMessage('يرجى اختيار المنتج لكل صنف'); return false; }
+                            if (!qty || qty < 1) { Swal.showValidationMessage('يرجى إدخال كمية صحيحة'); return false; }
+                            const recipe = recipesData.find(r => r.productId === productId);
+                            if (!recipe) { Swal.showValidationMessage('لا توجد تركيبة للمنتج المختار — أضف تركيبة أولاً'); return false; }
+                            if (!recipe.materials || recipe.materials.length === 0) { Swal.showValidationMessage('التركيبة فارغة — أضف مواد خام للتركيبة'); return false; }
                             items.push({ productId, qty, recipe });
                         }
                         // Aggregate required raw materials across all items
