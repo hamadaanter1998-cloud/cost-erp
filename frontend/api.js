@@ -6,57 +6,42 @@
 
 const API_BASE = 'https://cost-erp.onrender.com/api'; // ← Backend اونلاين
 
-// ─── Token Management (memory-first, storage optional) ────
-// بعض المتصفحات (Edge/Safari) تمنع sessionStorage بسبب Tracking Prevention
-// نختبر التخزين مرة واحدة فقط — إذا محجوب نعتمد على memory كلياً
+// ─── Token Management (localStorage for persistence) ──────
 const TokenManager = (() => {
     let _access  = null;
     let _refresh = null;
 
-    // اختبر مرة واحدة إن كان sessionStorage متاح
-    let _storageOK = false;
-    try {
-        sessionStorage.setItem('__erp_test__', '1');
-        sessionStorage.removeItem('__erp_test__');
-        _storageOK = true;
-    } catch {}
-
-    function _ssGet(k) {
-        if (!_storageOK) return null;
-        try { return sessionStorage.getItem(k); } catch { return null; }
+    function _lsGet(k) {
+        try { return localStorage.getItem(k); } catch { return null; }
     }
-    function _ssSet(k, v) {
-        if (!_storageOK) return;
-        try { sessionStorage.setItem(k, v); } catch {}
+    function _lsSet(k, v) {
+        try { localStorage.setItem(k, v); } catch {}
     }
-    function _ssDel(k) {
-        if (!_storageOK) return;
-        try { sessionStorage.removeItem(k); } catch {}
+    function _lsDel(k) {
+        try { localStorage.removeItem(k); } catch {}
     }
 
     return {
         set(accessToken, refreshToken) {
             _access  = accessToken;
             _refresh = refreshToken;
-            _ssSet('erp_access_token',  accessToken);
-            _ssSet('erp_refresh_token', refreshToken);
+            _lsSet('erp_access_token',  accessToken);
+            _lsSet('erp_refresh_token', refreshToken);
         },
         getAccess() {
-            return _access || _ssGet('erp_access_token');
+            return _access || _lsGet('erp_access_token');
         },
         getRefresh() {
-            return _refresh || _ssGet('erp_refresh_token');
+            return _refresh || _lsGet('erp_refresh_token');
         },
         clear() {
             _access  = null;
             _refresh = null;
-            _ssDel('erp_access_token');
-            _ssDel('erp_refresh_token');
-            try { localStorage.removeItem('erp_access_token');  } catch {}
-            try { localStorage.removeItem('erp_refresh_token'); } catch {}
+            _lsDel('erp_access_token');
+            _lsDel('erp_refresh_token');
         },
         isValid() {
-            return !!(_access || _ssGet('erp_access_token'));
+            return !!(_access || _lsGet('erp_access_token'));
         }
     };
 })();
