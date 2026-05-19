@@ -83,9 +83,20 @@ async function apiRequest(method, path, body = null, retry = true) {
                 return apiRequest(method, path, body, false);
             } else {
                 TokenManager.clear();
-                window.location.reload();
+                // عرض شاشة الـ login بدل reload لتجنب loop
+                if (window.app && typeof window.app.showLoginScreen === 'function') {
+                    window.app.showLoginScreen();
+                } else if (!window._loginRedirecting) {
+                    window._loginRedirecting = true;
+                    setTimeout(() => { window._loginRedirecting = false; window.location.reload(); }, 3000);
+                }
                 return null;
             }
+        }
+
+        // لو 401 بدون token (مش logged in) — تجاهل بهدوء
+        if (response.status === 401) {
+            return null;
         }
 
         return data;
