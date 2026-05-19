@@ -96,49 +96,23 @@ app.use('/api/auth', authLimiter, authRouter);
 // POST   /api/raw-materials
 // PUT    /api/raw-materials/:id
 // DELETE /api/raw-materials/:id
-app.use('/api/raw-materials',     rawMaterialsRouter);
-
-// المنتجات النهائية
-// GET    /api/products
-// POST   /api/products
-// ...إلخ
-app.use('/api/products',          productsRouter);
-
-// الموردين
-app.use('/api/suppliers',         suppliersRouter);
-
-// التركيبات (وصفات المواد)
-app.use('/api/recipes',           recipesRouter);
-
-// تكاليف المنتجات
-app.use('/api/product-costings',  productCostingsRouter);
-
-// أوامر الإنتاج
-app.use('/api/production-orders', productionOrdersRouter);
-
-// عروض الأسعار المحفوظة
-app.use('/api/saved-quotations',  savedQuotationsRouter);
-
-// الوحدات
-app.use('/api/units',             unitsRouter);
-
-// قوالب الأحجام
-app.use('/api/size-templates',    sizeTemplatesRouter);
-
-// الإشعارات
-app.use('/api/notifications',     notificationsRouter);
-
-// سجل النشاط
-app.use('/api/activity-log',      activityLogRouter);
+app.use('/api/raw-materials',     authMiddleware, rawMaterialsRouter);
+app.use('/api/products',          authMiddleware, productsRouter);
+app.use('/api/suppliers',         authMiddleware, suppliersRouter);
+app.use('/api/recipes',           authMiddleware, recipesRouter);
+app.use('/api/product-costings',  authMiddleware, productCostingsRouter);
+app.use('/api/production-orders', authMiddleware, productionOrdersRouter);
+app.use('/api/saved-quotations',  authMiddleware, savedQuotationsRouter);
+app.use('/api/units',             authMiddleware, unitsRouter);
+app.use('/api/size-templates',    authMiddleware, sizeTemplatesRouter);
+app.use('/api/notifications',     authMiddleware, notificationsRouter);
+app.use('/api/activity-log',      authMiddleware, activityLogRouter);
+app.use('/api/purchase-orders',   authMiddleware, purchaseOrdersRouter);
 
 // Approval Workflow Routes
 app.use('/api/approval',          approvalRouter);
 
-// أوامر الشراء
-app.use('/api/purchase-orders',   purchaseOrdersRouter);
-
-// ─── Load All Data (تحميل كل شيء دفعة واحدة عند بدء التطبيق) ──
-// GET /api/data/all — بديل عن loadAllFromSupabase()
+// ─── Load All Data ──────────────────────────────────────────
 app.get('/api/data/all', authMiddleware, async (req, res) => {
     try {
         const tables = {
