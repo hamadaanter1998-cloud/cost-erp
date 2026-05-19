@@ -3528,6 +3528,7 @@
                             <p>إدارة المنتجات والأحجام والتسعير</p>
                         </div>
                         <div class="d-flex gap-2 flex-wrap">
+                            <button class="btn btn-success" onclick="app.renderProductBalances(document.getElementById('pageContent'))"><i class="fas fa-balance-scale"></i> أرصدة المنتجات</button>
                             <button class="btn btn-primary" onclick="app.showProductModal()"><i class="fas fa-plus"></i> إضافة منتج</button>
                             <button class="btn btn-warning btn-sm" onclick="app.exportProducts()"><i class="fas fa-file-excel"></i> تصدير</button>
                             <button class="btn btn-success btn-sm" onclick="app.importProducts()"><i class="fas fa-file-import"></i> استيراد</button>
@@ -6251,6 +6252,273 @@
                 const blob = new Blob(['\uFEFF'+csv], { type: 'text/csv;charset=utf-8;' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a'); a.href = url; a.download = 'purchase-orders.csv'; a.click();
+            }
+
+            // ============================================
+            // RENDER PRODUCT BALANCES — أرصدة المنتجات النهائية
+            // ============================================
+            renderProductBalances(container) {
+                const products       = storage.get('products')        || [];
+                const productionOrds = storage.get('productionOrders')|| [];
+                const salesOrders    = storage.get('salesOrders')     || [];
+
+                const balances = products.map(prod => {
+                    const opening = prod.openingStock ?? prod.stock ?? 0;
+
+                    // الإنتاج بالكرتون: unitsProduced
+                    const producedCarton = productionOrds
+                        .filter(po => po.orderType === 'carton' && po.productId === prod.id && po.status === 'completed')
+                        .reduce((s, po) => s + (po.unitsProduced || 0), 0);
+
+                    // الإنتاج بالطن: subOrders[].quantity (كيلو → وحدات بنفس الوحدة)
+                    const producedTon = productionOrds
+                        .filter(po => po.orderType === 'ton' && po.status === 'completed')
+                        .reduce((s, po) => {
+                            const sub = (po.subOrders||[]).find(o => o.productId === prod.id);
+                            return s + (sub ? sub.quantity : 0);
+                        }, 0);
+
+                    const totalProduced = producedCarton + producedTon;
+
+                    // المبيعات: salesOrders items
+                    const soldQty = salesOrders.reduce((s, so) => {
+                        const item = (so.items||[]).find(i => i.productId === prod.id);
+                        return s + (item ? (item.qty || 0) : 0);
+                    }, 0);
+
+                    const current = opening + totalProduced - soldQty;
+                    const stockColor = current <= 0 ? '#dc3545' : current <= (prod.minStock||0) ? '#f97316' : '#10b981';
+                    const stockStatus = current <= 0 ? 'نفد' : current <= (prod.minStock||0) ? 'منخفض' : 'كافي';
+
+                    return { ...prod, opening, totalProduced, soldQty, current, stockColor, stockStatus };
+                });
+
+                const totalValue = balances.reduce((s,p) => s + p.current * (p.sellingPrice||0), 0);
+                const lowStock   = balances.filter(p => p.current > 0 && p.current <= (p.minStock||0)).length;
+                const outStock   = balances.filter(p => p.current <= 0).length;
+
+                container.innerHTML = `
+                    <div class="page-header">
+                        <div>
+                            <h2><i class="fas fa-balance-scale"></i> أرصدة المنتجات النهائية</h2>
+                            <p>متابعة مخزون المنتجات — افتتاحي + إنتاج - مبيعات</p>
+                        </div>
+                        <button class="btn btn-secondary" onclick="app.navigateTo('products')"><i class="fas fa-arrow-right"></i> رجوع للمنتجات</button>
+                    </div>
+
+                    <div class="stats-row" style="margin-bottom:1.5rem;">
+                        <div class="stat-card card-blue">
+                            <div class="icon bg-blue"><i class="fas fa-boxes"></i></div>
+                            <div class="info"><p>إجمالي المنتجات</p><h3>${balances.length}</h3><span class="trend">منتج</span></div>
+                        </div>
+                        <div class="stat-card card-purple">
+                            <div class="icon bg-purple"><i class="fas fa-coins"></i></div>
+                            <div class="info"><p>قيمة المخزون</p><h3 style="font-size:1.1rem;">${(totalValue/1000).toFixed(1)}k</h3><span class="trend trend-up">ريال</span></div>
+                        </div>
+                        <div class="stat-card card-orange">
+                            <div class="icon bg-orange"><i class="fas fa-exclamation-triangle"></i></div>
+                            <div class="info"><p>مخزون منخفض</p><h3>${lowStock}</h3><span class="trend">منتج</span></div>
+                        </div>
+                        <div class="stat-card" style="border-right:4px solid #dc3545;">
+                            <div class="icon" style="background:#dc3545;"><i class="fas fa-times-circle" style="color:#fff;"></i></div>
+                            <div class="info"><p>نفد المخزون</p><h3>${outStock}</h3><span class="trend">منتج</span></div>
+                        </div>
+                    </div>
+
+                    <div class="table-container">
+                        <div class="table-header">
+                            <h3><i class="fas fa-list"></i> أرصدة المنتجات</h3>
+                            <input type="text" class="form-control" style="max-width:200px;font-size:0.85rem;" placeholder="🔍 بحث..." oninput="app._filterTable('prodBalTable', this.value)">
+                        </div>
+                        <div class="table-wrapper">
+                            <table id="prodBalTable">
+                                <thead>
+                                    <tr>
+                                        <th>المنتج</th>
+                                        <th>الوحدة</th>
+                                        <th style="background:#dbeafe;color:#1e40af;">الرصيد الافتتاحي</th>
+                                        <th style="background:#dcfce7;color:#166534;">+ الإنتاج</th>
+                                        <th style="background:#fee2e2;color:#991b1b;">- المبيعات</th>
+                                        <th style="background:#f0fdf4;color:#065f46;font-size:1rem;">= الرصيد الحالي</th>
+                                        <th>الحالة</th>
+                                        <th>إجراء</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${balances.length === 0
+                                        ? `<tr><td colspan="8"><div class="empty-state" style="padding:2rem;"><i class="fas fa-boxes"></i><h3>لا توجد منتجات</h3></div></td></tr>`
+                                        : balances.map(p => `
+                                        <tr data-search="${p.name.toLowerCase()}">
+                                            <td>
+                                                <span style="font-weight:700;color:var(--primary);cursor:pointer;text-decoration:underline dotted;"
+                                                      onclick="app.showProductMovement('${p.id}')"
+                                                      title="عرض حركة المنتج">
+                                                    ${p.name}
+                                                </span>
+                                            </td>
+                                            <td style="color:var(--text-secondary);">${p.unit||'وحدة'}</td>
+                                            <td style="background:#eff6ff;text-align:center;font-weight:600;">${(p.opening||0).toLocaleString('ar-SA')}</td>
+                                            <td style="background:#f0fdf4;text-align:center;font-weight:600;color:#166534;">+${p.totalProduced.toLocaleString('ar-SA')}</td>
+                                            <td style="background:#fef2f2;text-align:center;font-weight:600;color:#991b1b;">-${p.soldQty.toLocaleString('ar-SA')}</td>
+                                            <td style="background:#ecfdf5;text-align:center;">
+                                                <strong style="font-size:1.05rem;color:${p.stockColor};">${p.current.toLocaleString('ar-SA')}</strong>
+                                            </td>
+                                            <td><span style="background:${p.stockColor};color:#fff;padding:2px 10px;border-radius:1rem;font-size:0.78rem;font-weight:700;">${p.stockStatus}</span></td>
+                                            <td>
+                                                <button class="btn btn-primary btn-sm" onclick="app.showSaleModal()" style="font-size:0.78rem;">
+                                                    <i class="fas fa-file-invoice-dollar"></i> بيع
+                                                </button>
+                                            </td>
+                                        </tr>`).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `;
+            }
+
+            showProductMovement(prodId) {
+                const products       = storage.get('products')        || [];
+                const productionOrds = storage.get('productionOrders')|| [];
+                const salesOrders    = storage.get('salesOrders')     || [];
+                const prod = products.find(p => p.id === prodId);
+                if (!prod) return;
+
+                const opening = prod.openingStock ?? prod.stock ?? 0;
+
+                // حركات الإنتاج
+                const productionMoves = [];
+                productionOrds.filter(po => po.status === 'completed').forEach(po => {
+                    if (po.orderType === 'carton' && po.productId === prodId && po.unitsProduced > 0) {
+                        productionMoves.push({
+                            date: po.date ? new Date(po.date).toISOString().split('T')[0] : '—',
+                            ref:  po.id?.slice(0,8) || '—',
+                            desc: `إنتاج بالكرتون (${po.cartonCount||0} كرتون)`,
+                            qty:  po.unitsProduced || 0,
+                            type: 'production'
+                        });
+                    } else if (po.orderType === 'ton') {
+                        const sub = (po.subOrders||[]).find(o => o.productId === prodId);
+                        if (sub && sub.quantity > 0) {
+                            productionMoves.push({
+                                date: po.date ? new Date(po.date).toISOString().split('T')[0] : '—',
+                                ref:  po.id?.slice(0,8) || '—',
+                                desc: `إنتاج بالطن (${sub.quantity} كيلو)`,
+                                qty:  sub.quantity,
+                                type: 'production'
+                            });
+                        }
+                    }
+                });
+
+                // حركات المبيعات
+                const salesMoves = [];
+                salesOrders.forEach(so => {
+                    const item = (so.items||[]).find(i => i.productId === prodId);
+                    if (item && item.qty > 0) {
+                        salesMoves.push({
+                            date: so.orderDate || '—',
+                            ref:  so.orderNumber,
+                            desc: `مبيعات — ${so.customerName||'عميل'}`,
+                            qty:  item.qty,
+                            type: 'sale'
+                        });
+                    }
+                });
+
+                const totalProduced = productionMoves.reduce((s,m) => s + m.qty, 0);
+                const totalSold     = salesMoves.reduce((s,m) => s + m.qty, 0);
+                const current       = opening + totalProduced - totalSold;
+                const stockColor    = current <= 0 ? '#dc3545' : current <= (prod.minStock||0) ? '#f97316' : '#10b981';
+
+                const allMoves = [
+                    { date: prod.createdAt ? new Date(prod.createdAt).toISOString().split('T')[0] : '—', ref: 'رصيد افتتاحي', desc: '—', qty: opening, type: 'opening' },
+                    ...productionMoves,
+                    ...salesMoves
+                ].sort((a,b) => (a.date||'').localeCompare(b.date||''));
+
+                let running = 0;
+                const movesWithBalance = allMoves.map(m => {
+                    if (m.type === 'opening' || m.type === 'production') running += m.qty;
+                    if (m.type === 'sale') running -= m.qty;
+                    return { ...m, balance: running };
+                });
+
+                const typeLabel = { opening:'افتتاحي', production:'وارد (إنتاج)', sale:'صادر (مبيعات)' };
+                const typeColor = { opening:'#3b82f6', production:'#10b981', sale:'#ef4444' };
+                const typeIcon  = { opening:'fas fa-play-circle', production:'fas fa-industry', sale:'fas fa-shopping-bag' };
+
+                Swal.fire({
+                    title: `<i class="fas fa-history"></i> حركة مخزون: ${prod.name}`,
+                    width: '800px',
+                    html: `
+                        <div style="text-align:right;">
+                            <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:0.6rem;margin-bottom:1rem;">
+                                <div style="background:#eff6ff;border-radius:10px;padding:0.65rem;text-align:center;border-top:3px solid #3b82f6;">
+                                    <div style="font-size:0.72rem;color:#1e40af;font-weight:700;">الرصيد الافتتاحي</div>
+                                    <div style="font-size:1.2rem;font-weight:800;color:#1e40af;">${opening.toLocaleString('ar-SA')}</div>
+                                    <div style="font-size:0.7rem;color:#64748b;">${prod.unit||'وحدة'}</div>
+                                </div>
+                                <div style="background:#f0fdf4;border-radius:10px;padding:0.65rem;text-align:center;border-top:3px solid #10b981;">
+                                    <div style="font-size:0.72rem;color:#166534;font-weight:700;">+ الإنتاج</div>
+                                    <div style="font-size:1.2rem;font-weight:800;color:#10b981;">+${totalProduced.toLocaleString('ar-SA')}</div>
+                                    <div style="font-size:0.7rem;color:#64748b;">${prod.unit||'وحدة'}</div>
+                                </div>
+                                <div style="background:#fef2f2;border-radius:10px;padding:0.65rem;text-align:center;border-top:3px solid #ef4444;">
+                                    <div style="font-size:0.72rem;color:#991b1b;font-weight:700;">- المبيعات</div>
+                                    <div style="font-size:1.2rem;font-weight:800;color:#ef4444;">-${totalSold.toLocaleString('ar-SA')}</div>
+                                    <div style="font-size:0.7rem;color:#64748b;">${prod.unit||'وحدة'}</div>
+                                </div>
+                                <div style="background:#ecfdf5;border-radius:10px;padding:0.65rem;text-align:center;border-top:3px solid ${stockColor};">
+                                    <div style="font-size:0.72rem;font-weight:700;color:${stockColor};">= الرصيد الحالي</div>
+                                    <div style="font-size:1.2rem;font-weight:800;color:${stockColor};">${current.toLocaleString('ar-SA')}</div>
+                                    <div style="font-size:0.7rem;color:#64748b;">${prod.unit||'وحدة'}</div>
+                                </div>
+                            </div>
+                            <div style="max-height:340px;overflow-y:auto;border-radius:8px;border:1px solid #e2e8f0;">
+                                <table style="width:100%;border-collapse:collapse;font-size:0.82rem;">
+                                    <thead style="position:sticky;top:0;background:#f8fafc;z-index:1;">
+                                        <tr>
+                                            <th style="padding:0.5rem 0.75rem;text-align:right;border-bottom:1px solid #e2e8f0;">التاريخ</th>
+                                            <th style="padding:0.5rem;text-align:right;border-bottom:1px solid #e2e8f0;">نوع الحركة</th>
+                                            <th style="padding:0.5rem;text-align:right;border-bottom:1px solid #e2e8f0;">المرجع</th>
+                                            <th style="padding:0.5rem;text-align:right;border-bottom:1px solid #e2e8f0;">البيان</th>
+                                            <th style="padding:0.5rem;text-align:center;border-bottom:1px solid #e2e8f0;">الكمية</th>
+                                            <th style="padding:0.5rem;text-align:center;border-bottom:1px solid #e2e8f0;">الرصيد</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${movesWithBalance.length === 0
+                                            ? `<tr><td colspan="6" style="text-align:center;padding:2rem;color:#94a3b8;">لا توجد حركات</td></tr>`
+                                            : movesWithBalance.map((m,i) => `
+                                            <tr style="background:${i%2===0?'#fff':'#f8fafc'};">
+                                                <td style="padding:0.45rem 0.75rem;color:#64748b;font-size:0.8rem;">${m.date}</td>
+                                                <td style="padding:0.45rem 0.5rem;">
+                                                    <span style="background:${typeColor[m.type]};color:#fff;padding:2px 8px;border-radius:1rem;font-size:0.72rem;font-weight:700;">
+                                                        <i class="${typeIcon[m.type]}"></i> ${typeLabel[m.type]}
+                                                    </span>
+                                                </td>
+                                                <td style="padding:0.45rem 0.5rem;font-family:monospace;color:var(--primary);font-weight:700;font-size:0.8rem;">${m.ref}</td>
+                                                <td style="padding:0.45rem 0.5rem;font-size:0.82rem;">${m.desc}</td>
+                                                <td style="padding:0.45rem 0.5rem;text-align:center;font-weight:700;color:${typeColor[m.type]};">
+                                                    ${m.type==='sale'?'-':'+'}${m.qty.toLocaleString('ar-SA')} ${prod.unit||''}
+                                                </td>
+                                                <td style="padding:0.45rem 0.5rem;text-align:center;font-weight:800;color:${m.balance<=0?'#ef4444':m.balance<=(prod.minStock||0)?'#f97316':'#10b981'};">
+                                                    ${m.balance.toLocaleString('ar-SA')}
+                                                </td>
+                                            </tr>`).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    `,
+                    showCancelButton: true,
+                    confirmButtonText: '<i class="fas fa-file-invoice-dollar"></i> إنشاء فاتورة مبيعات',
+                    cancelButtonText: 'إغلاق',
+                    confirmButtonColor: 'var(--primary)'
+                }).then(result => {
+                    if (result.isConfirmed) this.showSaleModal();
+                });
             }
 
             // ============================================
