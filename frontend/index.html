@@ -5086,19 +5086,23 @@
                     return;
                 }
 
-                // Deduct aggregated raw materials
+                // خصم المواد دفعة واحدة بدون approval workflow
+                const deductions = Object.entries(aggregated).map(([materialId, info]) => ({
+                    materialId, qty: info.required
+                }));
+                // تحديث الـ cache المحلي فوراً
                 Object.entries(aggregated).forEach(([matId, info]) => {
                     const idx = rawMaterials.findIndex(m => m.id === matId);
                     if (idx !== -1) {
-                        rawMaterials[idx].quantity = Math.max(0, rawMaterials[idx].quantity - info.required);
-                        if (rawMaterials[idx].quantity <= rawMaterials[idx].minStock)
+                        rawMaterials[idx].quantity = Math.max(0, (rawMaterials[idx].quantity || 0) - info.required);
+                        if (rawMaterials[idx].quantity <= (rawMaterials[idx].minStock || 0))
                             this.addNotification(`⚠️ مخزون منخفض: ${rawMaterials[idx].name}`, 'warning');
                     }
                 });
                 storage.set('rawMaterials', rawMaterials);
+                // إرسال للسيرفر دفعة واحدة
                 const affectedIds1 = Object.keys(aggregated);
-                storage.set("rawMaterials", rawMaterials);
-                for (const m of rawMaterials.filter(m => affectedIds1.includes(m.id))) { await storage.crud("rawMaterials", "update", m); }
+                await api.post('/raw-materials/bulk-deduct', { deductions });
 
                 // Increase stock and build sub-orders info
                 let grandTotalCost = 0;
@@ -5542,18 +5546,18 @@
                     }
                 });
                 // خصم مواد التعبئة (الإجمالي)
-                Object.entries(globalAggPack).forEach(([id, info]) => {
+                const allAgg = { ...aggregated, ...globalAggPack };
+                Object.entries(allAgg).forEach(([id, info]) => {
                     const idx = rawMaterials.findIndex(m => m.id === id);
                     if (idx !== -1) {
                         rawMaterials[idx].quantity = Math.max(0, rawMaterials[idx].quantity - info.required);
-                        if (rawMaterials[idx].quantity <= rawMaterials[idx].minStock)
+                        if (rawMaterials[idx].quantity <= (rawMaterials[idx].minStock || 0))
                             this.addNotification(`⚠️ مخزون منخفض: ${rawMaterials[idx].name}`, 'warning');
                     }
                 });
                 storage.set('rawMaterials', rawMaterials);
-                for (const m of rawMaterials) { if (m.id) await storage.crud('rawMaterials', 'update', m); }
-                const affectedIds2 = Object.keys(aggregated);
-                storage.set("rawMaterials", rawMaterials);
+                const deductions2 = Object.entries(allAgg).map(([materialId, info]) => ({ materialId, qty: info.required }));
+                await api.post('/raw-materials/bulk-deduct', { deductions: deductions2 });
                 for (const m of rawMaterials.filter(m => affectedIds2.includes(m.id))) { await storage.crud("rawMaterials", "update", m); }
                 // زيادة مخزون كل منتج + إنشاء أمر مستقل لكل سطر
                 const orderId = crypto.randomUUID();

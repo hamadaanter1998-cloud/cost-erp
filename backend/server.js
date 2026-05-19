@@ -96,6 +96,29 @@ app.use('/api/auth', authLimiter, authRouter);
 // POST   /api/raw-materials
 // PUT    /api/raw-materials/:id
 // DELETE /api/raw-materials/:id
+// ─── Bulk Deduct Raw Materials (بعد موافقة أمر الإنتاج - بدون approval) ───
+app.post('/api/raw-materials/bulk-deduct', authMiddleware, async (req, res) => {
+    try {
+        const { deductions } = req.body; // [{ materialId, qty }]
+        if (!Array.isArray(deductions) || deductions.length === 0) {
+            return res.status(400).json({ success: false, error: 'deductions مطلوبة' });
+        }
+        const results = [];
+        for (const { materialId, qty } of deductions) {
+            const { data: mat, error: fetchErr } = await supabase
+                .from('raw_materials').select('*').eq('id', materialId).single();
+            if (fetchErr || !mat) { results.push({ materialId, success: false }); continue; }
+            const newQty = Math.max(0, (mat.quantity || 0) - qty);
+            const { error: updateErr } = await supabase
+                .from('raw_materials').update({ quantity: newQty, updated_at: new Date().toISOString() }).eq('id', materialId);
+            results.push({ materialId, success: !updateErr, newQty });
+        }
+        res.json({ success: true, results });
+    } catch (err) {
+        res.status(500).json({ success: false, error: err.message });
+    }
+});
+
 app.use('/api/raw-materials',     authMiddleware, rawMaterialsRouter);
 app.use('/api/products',          authMiddleware, productsRouter);
 app.use('/api/suppliers',         authMiddleware, suppliersRouter);
