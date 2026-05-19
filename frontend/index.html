@@ -5096,7 +5096,9 @@
                     }
                 });
                 storage.set('rawMaterials', rawMaterials);
-                for (const m of rawMaterials) { if (m.id) await storage.crud('rawMaterials', 'update', m); }
+                const affectedIds1 = Object.keys(aggregated);
+                storage.set("rawMaterials", rawMaterials);
+                for (const m of rawMaterials.filter(m => affectedIds1.includes(m.id))) { await storage.crud("rawMaterials", "update", m); }
 
                 // Increase stock and build sub-orders info
                 let grandTotalCost = 0;
@@ -5137,7 +5139,9 @@
                     }))
                 };
                 productionOrders.push(order);
+                storage.set('productionOrders', productionOrders);
                 await storage.crud('productionOrders', 'create', order);
+                storage.set('products', products);
                 storage.showToast('تم تنفيذ أمر الإنتاج! 🎉');
                 this.addNotification('✅ اكتمل أمر الإنتاج: ' + order.id, 'success');
                 this.navigateTo('production');
@@ -5550,7 +5554,9 @@
                 });
                 storage.set('rawMaterials', rawMaterials);
                 for (const m of rawMaterials) { if (m.id) await storage.crud('rawMaterials', 'update', m); }
-
+                const affectedIds2 = Object.keys(aggregated);
+                storage.set("rawMaterials", rawMaterials);
+                for (const m of rawMaterials.filter(m => affectedIds2.includes(m.id))) { await storage.crud("rawMaterials", "update", m); }
                 // زيادة مخزون كل منتج + إنشاء أمر مستقل لكل سطر
                 const orderId = crypto.randomUUID();
                 const orderIds = [];
