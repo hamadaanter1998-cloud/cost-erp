@@ -3544,12 +3544,10 @@
                     html: `
                         <div class="form-group"><label>اسم المنتج *</label><input type="text" id="prdName" class="form-control" value="${product ? product.name : ''}"></div>
                         <div class="form-group"><label>الباركود</label><input type="text" id="prdBarcode" class="form-control" value="${product ? product.barcode : '628'+Math.floor(Math.random()*9000000000+1000000000)}"></div>
-                        <div class="form-group"><label>سعر البيع *</label><input type="number" id="prdPrice" class="form-control" step="0.01" value="${product ? product.sellingPrice : ''}" oninput="app.calcProfitMargin()"></div>
                         <div class="form-group">
                             <label>تكلفة المنتج <span style="color:#94a3b8;font-size:0.78rem;">(اختياري — يُجلب تلقائياً من تكلفة المنتجات)</span></label>
-                            <input type="number" id="prdCost" class="form-control" step="0.01" value="${product ? (product.costPrice||'') : ''}" oninput="app.calcProfitMargin()" placeholder="اتركه فارغاً للحساب التلقائي">
+                            <input type="number" id="prdCost" class="form-control" step="0.01" value="${product ? (product.costPrice||'') : ''}" placeholder="اتركه فارغاً للحساب التلقائي">
                         </div>
-                        <div class="form-group"><label>هامش الربح</label><input type="text" id="prdMargin" class="form-control" readonly value="${product ? (product.profitMargin ? product.profitMargin+'%' : '') : ''}"></div>
                         <div class="form-group">
                             <label>الرصيد الافتتاحي <span style="color:#94a3b8;font-size:0.78rem;">(الكمية الابتدائية)</span></label>
                             <input type="number" id="prdStock" class="form-control" value="${product ? (product.openingStock ?? product.stock ?? 0) : '0'}">
@@ -3558,6 +3556,9 @@
                             <label>حجم المنتج (مل) <span style="color:#94a3b8;font-size:0.78rem;">(اختياري — يُحدد من موديول الأحجام)</span></label>
                             <input type="number" id="prdVolume" class="form-control" value="${product ? (product.volume||'') : ''}" placeholder="مثال: 500">
                         </div>
+                        <div style="background:#eff6ff;border-radius:8px;padding:0.75rem;margin-top:0.5rem;font-size:0.82rem;color:#1e40af;text-align:right;">
+                            <i class="fas fa-info-circle"></i> سعر البيع يُحدد لكل حجم (SKU) بشكل منفصل من موديول <strong>تكلفة المنتجات</strong>
+                        </div>
                     `,
                     showCancelButton: true,
                     confirmButtonText: isEdit ? 'تحديث' : 'إضافة',
@@ -3565,21 +3566,14 @@
                     width: '600px',
                     preConfirm: () => {
                         const name = document.getElementById('prdName').value.trim();
-                        const sellingPrice = parseFloat(document.getElementById('prdPrice').value);
                         if (!name) { Swal.showValidationMessage('اسم المنتج مطلوب'); return false; }
-                        if (!sellingPrice) { Swal.showValidationMessage('سعر البيع مطلوب'); return false; }
-                        const costPrice  = parseFloat(document.getElementById('prdCost').value) || null;
-                        const openingStock = parseInt(document.getElementById('prdStock').value) || 0;
-                        const volume     = parseInt(document.getElementById('prdVolume').value) || null;
-                        const profitMargin = costPrice && sellingPrice
-                            ? parseFloat((((sellingPrice - costPrice) / sellingPrice) * 100).toFixed(1))
-                            : null;
+                        const costPrice    = parseFloat(document.getElementById('prdCost').value)  || null;
+                        const openingStock = parseInt(document.getElementById('prdStock').value)   || 0;
+                        const volume       = parseInt(document.getElementById('prdVolume').value)  || null;
                         return {
                             name,
                             barcode: document.getElementById('prdBarcode').value.trim(),
-                            sellingPrice,
                             costPrice,
-                            profitMargin,
                             openingStock,
                             stock: openingStock,
                             volume
@@ -4337,6 +4331,14 @@
                                                     <span>💵 تكلفة الوحدة</span>
                                                     <strong>${sku.totalUnitCost?.toFixed(4) || '0.00'} ر.س</strong>
                                                 </div>
+                                                ${sku.sellingPrice ? `<div class="sku-calc-box" style="background:linear-gradient(135deg,#7c3aed,#6d28d9);margin:4px 0;font-size:0.82rem;padding:0.4rem 0.75rem;">
+                                                    <span>💰 سعر بيع الكرتون</span>
+                                                    <strong>${sku.sellingPrice.toFixed(2)} ر.س</strong>
+                                                </div>` : ''}
+                                                ${sku.sellingPriceUnit ? `<div class="sku-calc-box" style="background:linear-gradient(135deg,#0891b2,#0e7490);margin:4px 0;font-size:0.82rem;padding:0.4rem 0.75rem;">
+                                                    <span>💰 سعر بيع الوحدة</span>
+                                                    <strong>${sku.sellingPriceUnit.toFixed(2)} ر.س</strong>
+                                                </div>` : ''}
                                                 <div class="sku-actions">
                                                     <button class="btn btn-info btn-sm" style="flex:1;" onclick="app.showSkuCostingModal('${sku.id}')"><i class="fas fa-edit"></i> تعديل</button>
                                                     <button class="btn btn-danger btn-sm" onclick="app.deleteSkuCosting('${sku.id}')"><i class="fas fa-trash"></i></button>
@@ -4520,6 +4522,24 @@
                             <strong id="skuUnitCost">${existingCosting?.totalUnitCost?.toFixed(4) || '0.00'} ر.س</strong>
                         </div>
                         <div class="form-group" style="margin-top:0.5rem;">
+                            <label>💰 سعر بيع الكرتون (ر.س) *</label>
+                            <input type="number" id="skuSellingPrice" class="form-control" step="0.01" min="0"
+                                value="${existingCosting?.sellingPrice || ''}"
+                                placeholder="سعر بيع الكرتون لهذا الحجم"
+                                oninput="app._calcSkuMargin()">
+                        </div>
+                        <div class="form-group">
+                            <label>💰 سعر بيع الوحدة (ر.س)</label>
+                            <input type="number" id="skuSellingPriceUnit" class="form-control" step="0.01" min="0"
+                                value="${existingCosting?.sellingPriceUnit || ''}"
+                                placeholder="سعر بيع الوحدة الواحدة"
+                                oninput="app._calcSkuMargin()">
+                        </div>
+                        <div id="skuMarginDisplay" style="display:${(existingCosting?.sellingPrice)?'flex':'none'};background:#f0fdf4;border-radius:8px;padding:0.6rem 1rem;justify-content:space-between;align-items:center;font-size:0.88rem;margin-bottom:0.5rem;">
+                            <span>📊 هامش الربح للكرتون:</span>
+                            <strong id="skuMarginVal" style="color:#10b981;">—</strong>
+                        </div>
+                        <div class="form-group" style="margin-top:0.5rem;">
                             <label>باركود SKU</label>
                             <input type="text" id="skuBarcode" class="form-control" value="${existingCosting?.barcode || 'SKU'+Math.floor(Math.random()*900000+100000)}">
                         </div>
@@ -4582,6 +4602,8 @@
                             packagingCost: parseFloat(packagingCost.toFixed(2)),
                             totalCartonCost: parseFloat(totalCartonCost.toFixed(2)),
                             totalUnitCost: parseFloat(totalUnitCost.toFixed(4)),
+                            sellingPrice:     parseFloat(document.getElementById('skuSellingPrice').value)     || null,
+                            sellingPriceUnit: parseFloat(document.getElementById('skuSellingPriceUnit').value) || null,
                             barcode: document.getElementById('skuBarcode').value.trim()
                         };
                     }
@@ -4626,7 +4648,29 @@
                 this.calcSkuTotal();
             }
 
-            addSkuPackagingRow() {
+            _calcSkuMargin() {
+                const selling = parseFloat(document.getElementById('skuSellingPrice')?.value) || 0;
+                const cost    = parseFloat(document.getElementById('skuTotalCost')?.textContent) ||
+                                parseFloat(document.getElementById('skuRawCost')?.textContent?.replace(/[^\d.]/g, '')) || 0;
+                const display = document.getElementById('skuMarginDisplay');
+                const val     = document.getElementById('skuMarginVal');
+                if (!display || !val) return;
+                if (selling > 0 && cost > 0) {
+                    const margin = ((selling - cost) / selling * 100).toFixed(1);
+                    val.textContent = `${margin}%`;
+                    val.style.color = parseFloat(margin) >= 0 ? '#10b981' : '#dc3545';
+                    display.style.display = 'flex';
+                    // تحديث سعر الوحدة تلقائياً لو فارغ
+                    const unitsEl = document.getElementById('skuUnitsPerCarton');
+                    const unitPriceEl = document.getElementById('skuSellingPriceUnit');
+                    if (unitPriceEl && !unitPriceEl.value && unitsEl?.value) {
+                        const units = parseInt(unitsEl.value) || 1;
+                        unitPriceEl.value = (selling / units).toFixed(2);
+                    }
+                } else {
+                    display.style.display = 'none';
+                }
+            }
                 const tbody = document.getElementById('skuPackagingBody');
                 if (!tbody) return;
                 const row = document.createElement('div');
