@@ -5038,9 +5038,27 @@
 
                 let rawMatRows = '';
                 let totalRawCost = 0;
+                const _purchaseOrders = storage.get('purchaseOrders') || [];
+                const _productionOrds = storage.get('productionOrders') || [];
                 Object.entries(aggregated).forEach(([matId, info]) => {
                     const material = rawMaterials.find(m => m.id === matId);
-                    const available = material ? material.quantity : 0;
+                    // حساب الرصيد الحقيقي = افتتاحي + مشتريات مستلمة - منصرف
+                    let available = 0;
+                    if (material) {
+                        const opening = material.openingStock ?? material.quantity ?? 0;
+                        const purchased = _purchaseOrders
+                            .filter(po => po.status === 'received')
+                            .reduce((s, po) => { const it = (po.items||[]).find(i => i.materialId === matId); return s + (it ? it.qty||0 : 0); }, 0);
+                        const consumed = _productionOrds.reduce((s, po) => {
+                            const entry = (po.materials||[]).find(m => m.materialId === matId);
+                            if (entry) return s + (entry.requiredQty||0);
+                            return s + (po.subOrders||[]).reduce((ss, sub) => {
+                                const sm = (sub.materials||[]).find(m => m.materialId === matId);
+                                return ss + (sm ? sm.requiredQty||0 : 0);
+                            }, 0);
+                        }, 0);
+                        available = opening + purchased - consumed;
+                    }
                     const ok = available >= info.required;
                     const lineCost = info.required * info.price;
                     totalRawCost += lineCost;
@@ -5349,15 +5367,25 @@
 
                         // --- التحقق من المخزون (إجمالي) ---
                         const shortages = [];
+                        const _po3 = storage.get('purchaseOrders') || [];
+                        const _prd3 = storage.get('productionOrders') || [];
+                        const _avail3 = (matId) => {
+                            const mat = rms.find(m => m.id === matId);
+                            if (!mat) return 0;
+                            const opening = mat.openingStock ?? mat.quantity ?? 0;
+                            const purchased = _po3.filter(po => po.status==='received').reduce((s,po) => { const it=(po.items||[]).find(i=>i.materialId===matId); return s+(it?it.qty||0:0); }, 0);
+                            const consumed = _prd3.reduce((s,po) => { const e=(po.materials||[]).find(m=>m.materialId===matId); if(e) return s+(e.requiredQty||0); return s+(po.subOrders||[]).reduce((ss,sub)=>{ const sm=(sub.materials||[]).find(m=>m.materialId===matId); return ss+(sm?sm.requiredQty||0:0); },0); }, 0);
+                            return opening + purchased - consumed;
+                        };
                         Object.entries(globalAggRaw).forEach(([id, info]) => {
-                            const mat = rms.find(m => m.id === id);
-                            if (!mat || mat.quantity < info.required)
-                                shortages.push(`[خام] ${info.name}: مطلوب ${info.required.toFixed(2)} — متوفر ${mat?.quantity?.toFixed(2)||0}`);
+                            const avail = _avail3(id);
+                            if (avail < info.required)
+                                shortages.push(`[خام] ${info.name}: مطلوب ${info.required.toFixed(2)} — متوفر ${avail.toFixed(2)}`);
                         });
                         Object.entries(globalAggPack).forEach(([id, info]) => {
-                            const mat = rms.find(m => m.id === id);
-                            if (!mat || mat.quantity < info.required)
-                                shortages.push(`[تعبئة] ${info.name}: مطلوب ${info.required.toFixed(0)} — متوفر ${mat?.quantity?.toFixed(0)||0}`);
+                            const avail = _avail3(id);
+                            if (avail < info.required)
+                                shortages.push(`[تعبئة] ${info.name}: مطلوب ${info.required.toFixed(0)} — متوفر ${avail.toFixed(0)}`);
                         });
                         if (shortages.length > 0) {
                             Swal.showValidationMessage('مخزون غير كافٍ:<br>' + shortages.join('<br>'));
@@ -5463,15 +5491,21 @@
 
                 // --- عرض المواد الخام ---
                 const rawDiv = document.getElementById('cpoRawMatsBody');
+                const _po2 = storage.get('purchaseOrders') || [];
+                const _prod2 = storage.get('productionOrders') || [];
+                const _calcAvail = (matId) => {
+                    const mat = rms.find(m => m.id === matId);
+                    if (!mat) return 0;
+                    const opening = mat.openingStock ?? mat.quantity ?? 0;
+                    const purchased = _po2.filter(po => po.status==='received').reduce((s,po) => { const it=(po.items||[]).find(i=>i.materialId===matId); return s+(it?it.qty||0:0); }, 0);
+                    const consumed = _prod2.reduce((s,po) => { const e=(po.materials||[]).find(m=>m.materialId===matId); if(e) return s+(e.requiredQty||0); return s+(po.subOrders||[]).reduce((ss,sub)=>{ const sm=(sub.materials||[]).find(m=>m.materialId===matId); return ss+(sm?sm.requiredQty||0:0); },0); }, 0);
+                    return opening + purchased - consumed;
+                };
                 if (rawDiv) {
                     if (Object.keys(globalAggRaw).length > 0) {
                         let rawRows = ''; let rawTotal = 0;
-                        Object.values(globalAggRaw).forEach(info => {
-                            const rm   = rms.find(m => m.name === info.name || globalAggRaw[Object.keys(globalAggRaw).find(k=>globalAggRaw[k]===info)]);
-                            const avail = rms.find(m => {
-                                const k = Object.keys(globalAggRaw).find(kk => globalAggRaw[kk] === info);
-                                return m.id === k;
-                            })?.quantity || 0;
+                        Object.entries(globalAggRaw).forEach(([matId, info]) => {
+                            const avail = _calcAvail(matId);
                             const ok = avail >= info.required;
                             const cost = info.required * info.price;
                             rawTotal += cost;
@@ -5496,7 +5530,7 @@
                     if (Object.keys(globalAggPack).length > 0) {
                         let packRows = ''; let packTotal = 0;
                         Object.entries(globalAggPack).forEach(([id, info]) => {
-                            const avail = rms.find(m => m.id === id)?.quantity || 0;
+                            const avail = _calcAvail(id);
                             const ok = avail >= info.required;
                             const cost = info.required * info.price;
                             packTotal += cost;
