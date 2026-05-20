@@ -3548,13 +3548,22 @@
                 Swal.fire({
                     title: isEdit ? 'تعديل منتج' : 'إضافة منتج جديد',
                     html: `
-                        <div class="form-group"><label>اسم المنتج</label><input type="text" id="prdName" class="form-control" value="${product ? product.name : ''}"></div>
+                        <div class="form-group"><label>اسم المنتج *</label><input type="text" id="prdName" class="form-control" value="${product ? product.name : ''}"></div>
                         <div class="form-group"><label>الباركود</label><input type="text" id="prdBarcode" class="form-control" value="${product ? product.barcode : '628'+Math.floor(Math.random()*9000000000+1000000000)}"></div>
-                        <div class="form-group"><label>سعر البيع</label><input type="number" id="prdPrice" class="form-control" step="0.01" value="${product ? product.sellingPrice : ''}" oninput="app.calcProfitMargin()"></div>
-                        <div class="form-group"><label>تكلفة المنتج</label><input type="number" id="prdCost" class="form-control" step="0.01" value="${product ? product.costPrice : ''}" oninput="app.calcProfitMargin()"></div>
-                        <div class="form-group"><label>هامش الربح</label><input type="text" id="prdMargin" class="form-control" readonly value="${product ? product.profitMargin+'%' : ''}"></div>
-                        <div class="form-group"><label>المخزون</label><input type="number" id="prdStock" class="form-control" value="${product ? product.stock : '0'}"></div>
-                        <div class="form-group"><label>حجم المنتج (مل)</label><input type="number" id="prdVolume" class="form-control" value="${product ? product.volume : '500'}"></div>
+                        <div class="form-group"><label>سعر البيع *</label><input type="number" id="prdPrice" class="form-control" step="0.01" value="${product ? product.sellingPrice : ''}" oninput="app.calcProfitMargin()"></div>
+                        <div class="form-group">
+                            <label>تكلفة المنتج <span style="color:#94a3b8;font-size:0.78rem;">(اختياري — يُجلب تلقائياً من تكلفة المنتجات)</span></label>
+                            <input type="number" id="prdCost" class="form-control" step="0.01" value="${product ? (product.costPrice||'') : ''}" oninput="app.calcProfitMargin()" placeholder="اتركه فارغاً للحساب التلقائي">
+                        </div>
+                        <div class="form-group"><label>هامش الربح</label><input type="text" id="prdMargin" class="form-control" readonly value="${product ? (product.profitMargin ? product.profitMargin+'%' : '') : ''}"></div>
+                        <div class="form-group">
+                            <label>الرصيد الافتتاحي <span style="color:#94a3b8;font-size:0.78rem;">(الكمية الابتدائية)</span></label>
+                            <input type="number" id="prdStock" class="form-control" value="${product ? (product.openingStock ?? product.stock ?? 0) : '0'}">
+                        </div>
+                        <div class="form-group">
+                            <label>حجم المنتج (مل) <span style="color:#94a3b8;font-size:0.78rem;">(اختياري — يُحدد من موديول الأحجام)</span></label>
+                            <input type="number" id="prdVolume" class="form-control" value="${product ? (product.volume||'') : ''}" placeholder="مثال: 500">
+                        </div>
                     `,
                     showCancelButton: true,
                     confirmButtonText: isEdit ? 'تحديث' : 'إضافة',
@@ -3563,18 +3572,23 @@
                     preConfirm: () => {
                         const name = document.getElementById('prdName').value.trim();
                         const sellingPrice = parseFloat(document.getElementById('prdPrice').value);
-                        const costPrice = parseFloat(document.getElementById('prdCost').value);
-                        if (!name || !sellingPrice || !costPrice) { Swal.showValidationMessage(
-                                'يرجى ملء الحقول المطلوبة'); return false; }
+                        if (!name) { Swal.showValidationMessage('اسم المنتج مطلوب'); return false; }
+                        if (!sellingPrice) { Swal.showValidationMessage('سعر البيع مطلوب'); return false; }
+                        const costPrice  = parseFloat(document.getElementById('prdCost').value) || null;
+                        const openingStock = parseInt(document.getElementById('prdStock').value) || 0;
+                        const volume     = parseInt(document.getElementById('prdVolume').value) || null;
+                        const profitMargin = costPrice && sellingPrice
+                            ? parseFloat((((sellingPrice - costPrice) / sellingPrice) * 100).toFixed(1))
+                            : null;
                         return {
                             name,
                             barcode: document.getElementById('prdBarcode').value.trim(),
                             sellingPrice,
                             costPrice,
-                            profitMargin: parseFloat((((sellingPrice - costPrice) / sellingPrice) * 100)
-                                .toFixed(1)),
-                            stock: parseInt(document.getElementById('prdStock').value) || 0,
-                            volume: parseInt(document.getElementById('prdVolume').value) || 500
+                            profitMargin,
+                            openingStock,
+                            stock: openingStock,
+                            volume
                         };
                     }
                 }).then(async (result) => {
