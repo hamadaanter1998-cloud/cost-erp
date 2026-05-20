@@ -5671,7 +5671,7 @@
                     const packTotal = Object.values(li.aggPack).reduce((s,i) => s + i.required * i.price, 0);
                     const lineOrderId = processedLines.length === 1 ? orderId : orderId + '_' + (li.lineIdx+1);
                     orderIds.push(lineOrderId);
-                    orders.push({
+                    const newOrder = {
                         id: lineOrderId,
                         orderType: 'carton',
                         productId: li.productId,
@@ -5691,9 +5691,9 @@
                             ...Object.entries(li.aggRaw).map(([id,i])  => ({ materialId:id, materialName:i.name, unit:i.unit, price:i.price, requiredQty:i.required, category:'rawMaterial' })),
                             ...Object.entries(li.aggPack).map(([id,i]) => ({ materialId:id, materialName:i.name, unit:'', price:i.price, requiredQty:i.required, category:'packaging' }))
                         ]
-                    });
+                    };
+                    await storage.crud('productionOrders', 'create', newOrder);
                 }
-                for (const ord of orders) { await storage.crud('productionOrders', 'create', ord); }
 
                 const prodNames = processedLines.map(l => {
                     const p = products.find(pp => pp.id === l.productId);
