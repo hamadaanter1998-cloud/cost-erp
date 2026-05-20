@@ -110,7 +110,10 @@ app.post('/api/raw-materials/bulk-deduct', authMiddleware, async (req, res) => {
             const { data: mat, error: fetchErr } = await supabase
                 .from('raw_materials').select('*').eq('id', materialId).single();
             if (fetchErr || !mat) { results.push({ materialId, success: false }); continue; }
-            const newQty = Math.max(0, (mat.quantity || 0) - qty);
+            // qty موجب = خصم، سالب = إعادة للمخزون
+            const newQty = qty < 0
+                ? (mat.quantity || 0) + Math.abs(qty)   // إعادة
+                : Math.max(0, (mat.quantity || 0) - qty); // خصم
             const { error: updateErr } = await supabase
                 .from('raw_materials').update({ quantity: newQty, updated_at: new Date().toISOString() }).eq('id', materialId);
             results.push({ materialId, success: !updateErr, newQty });

@@ -5190,8 +5190,6 @@
                 // Increase stock and build sub-orders info
                 let grandTotalCost = 0;
                 const subOrders = items.map(item => {
-                    const pIdx = products.findIndex(p => p.id === item.productId);
-                    if (pIdx !== -1) products[pIdx].stock += item.qty;
                     // qty/1000: التكلفة والكميات كلاهما محسوبان على أساس الطن
                     const qtyFactor = item.qty / 1000;
                     const itemCost = item.recipe.totalMaterialsCostPerTon * qtyFactor;
@@ -5205,7 +5203,7 @@
                         materials: item.recipe.materials.map(m => ({ ...m, requiredQty: m.quantity * qtyFactor }))
                     };
                 });
-                storage.set('products', products);
+                // أمر الطن لا يؤثر على مخزون المنتجات — فقط المواد الخام تتأثر
 
                 const order = {
                     id: crypto.randomUUID(),
@@ -5813,14 +5811,30 @@
             }
 
             async deleteProductionOrder(orderId) {
-                Swal.fire({ title: 'تأكيد الحذف', text: 'هل أنت متأكد؟', icon: 'warning', showCancelButton: true,
+                Swal.fire({ title: 'تأكيد الحذف', text: 'هل أنت متأكد؟ سيتم إعادة المواد الخام المنصرفة للمخزون.', icon: 'warning', showCancelButton: true,
                     confirmButtonText: 'نعم', cancelButtonText: 'إلغاء', confirmButtonColor: '#dc3545' }).then(async (
                     result) => {
                     if (result.isConfirmed) {
+                        // إعادة المواد الخام للمخزون عند حذف أمر الطن
+                        const productionOrders = storage.get('productionOrders') || [];
+                        const order = productionOrders.find(o => o.id === orderId);
+                        if (order && order.orderType === 'ton' && order.materials?.length > 0) {
+                            const reAdditions = order.materials.map(m => ({
+                                materialId: m.materialId,
+                                qty: -(m.requiredQty || 0) // سالب = إضافة للمخزون
+                            }));
+                            // نستخدم bulk-deduct بكمية سالبة = إعادة للمخزون
+                            await api.post('/raw-materials/bulk-deduct', {
+                                deductions: order.materials.map(m => ({
+                                    materialId: m.materialId,
+                                    qty: -(m.requiredQty || 0)
+                                }))
+                            });
+                        }
                         const r = await storage.crud('productionOrders', 'delete', { id: orderId });
                         if (r.pending) return;
                         if (!r.success) return;
-                        storage.showToast('تم حذف أمر الإنتاج');
+                        storage.showToast('تم حذف أمر الإنتاج وإعادة المواد للمخزون');
                         this.navigateTo('production');
                     }
                 });
