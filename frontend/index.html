@@ -5658,7 +5658,6 @@
                 storage.set('rawMaterials', rawMaterials);
                 const deductions2 = Object.entries(allAgg).map(([materialId, info]) => ({ materialId, qty: info.required }));
                 await api.post('/raw-materials/bulk-deduct', { deductions: deductions2 });
-                for (const m of rawMaterials.filter(m => affectedIds2.includes(m.id))) { await storage.crud("rawMaterials", "update", m); }
                 // زيادة مخزون كل منتج + إنشاء أمر مستقل لكل سطر
                 const orderId = crypto.randomUUID();
                 const orderIds = [];
