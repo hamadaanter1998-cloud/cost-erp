@@ -5646,7 +5646,7 @@
                     }
                 });
                 // خصم مواد التعبئة (الإجمالي)
-                const allAgg = { ...aggregated, ...globalAggPack };
+                const allAgg = { ...globalAggRaw, ...globalAggPack };
                 Object.entries(allAgg).forEach(([id, info]) => {
                     const idx = rawMaterials.findIndex(m => m.id === id);
                     if (idx !== -1) {
