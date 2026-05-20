@@ -4389,8 +4389,15 @@
                     item = item || {};
                     const p = item.price || 0;
                     const q = item.quantity || 1;
-                    return '<div class="pkg-grid-row">' +
-                        '<select class="form-control costing-item-select" onchange="app.onPkgSelectChange(this)">' + buildPkgOptions(item.materialId || '') + '</select>' +
+                    const matName = item.materialName || (pkgMaterials.find(m => m.id === item.materialId)?.name) || '';
+                    const rowId = 'pkgRow_' + Date.now() + '_' + Math.random().toString(36).slice(2,6);
+                    return '<div class="pkg-grid-row" style="position:relative;">' +
+                        '<div class="po-search-wrap" style="position:relative;">' +
+                            '<input type="text" class="form-control costing-item-search" placeholder="🔍 ابحث عن مادة تعبئة..." value="' + matName + '" ' +
+                                'data-material-id="' + (item.materialId||'') + '" ' +
+                                'oninput="app._pkgSearchMat(this)" autocomplete="off" style="font-size:0.82rem;">' +
+                            '<div class="costing-item-results" style="display:none;position:absolute;background:#fff;border:1px solid #ddd;border-radius:6px;max-height:160px;overflow-y:auto;z-index:9999;width:100%;box-shadow:0 4px 12px rgba(0,0,0,0.15);"></div>' +
+                        '</div>' +
                         '<input type="text" class="form-control costing-item-unit" readonly value="' + (item.unit||'') + '" style="text-align:center;">' +
                         '<input type="number" class="form-control costing-item-qty" value="' + q + '" min="1" oninput="app.calcSkuTotal()" style="text-align:center;">' +
                         '<input type="text" class="form-control costing-item-price" readonly value="' + (p ? p.toFixed(2) : '') + '" style="text-align:center;">' +
@@ -4534,9 +4541,9 @@
                         const cartonItems = [];
                         let packagingCost = 0;
                         rows.forEach(row => {
-                            const sel   = row.querySelector('.costing-item-select');
-                            const code  = sel ? sel.value : '';
-                            const name  = sel ? (sel.selectedOptions[0]?.dataset.name || '') : '';
+                            const searchInput = row.querySelector('.costing-item-search');
+                            const code  = searchInput ? searchInput.dataset.materialId : '';
+                            const name  = searchInput ? searchInput.value : '';
                             const qty   = parseInt(row.querySelector('.costing-item-qty')?.value)    || 0;
                             const price = parseFloat(row.querySelector('.costing-item-price')?.value) || 0;
                             if (code && price > 0 && qty > 0) {
@@ -4606,26 +4613,19 @@
             addSkuPackagingRow() {
                 const tbody = document.getElementById('skuPackagingBody');
                 if (!tbody) return;
-                const allMats = storage.get('rawMaterials') || [];
-                const pkgMats = allMats.filter(m => m.materialType === 'packaging');
-                const subMap  = { carton:'كرتون', bottle:'عبوة', spray:'بخاخ', aerosol:'ضاغط', sticker:'استيكر', '':'أخرى' };
-                const groups  = {};
-                pkgMats.forEach(m => { const g = m.subType||''; if(!groups[g]) groups[g]=[]; groups[g].push(m); });
-                let opts = '<option value="">— اختر مادة تعبئة —</option>';
-                if (pkgMats.length === 0) opts += '<option disabled>⚠️ أضف مواد تعبئة أولاً</option>';
-                Object.keys(groups).forEach(grp => {
-                    opts += '<optgroup label="'+(subMap[grp]||grp||'أخرى')+'">';
-                    groups[grp].forEach(m => { opts += '<option value="'+m.id+'" data-price="'+m.costPrice+'" data-name="'+m.name.replace(/"/g,'&quot;')+'" data-unit="'+m.unit+'">'+m.name+' — '+m.costPrice.toFixed(2)+' ر.س/'+m.unit+'</option>'; });
-                    opts += '</optgroup>';
-                });
                 const row = document.createElement('div');
                 row.className = 'pkg-grid-row';
+                row.style.position = 'relative';
                 row.innerHTML =
-                    '<select class="form-control costing-item-select" onchange="app.onPkgSelectChange(this)">'+opts+'</select>'+
-                    '<input type="text" class="form-control costing-item-unit" readonly style="text-align:center;">'+
-                    '<input type="number" class="form-control costing-item-qty" value="1" min="1" oninput="app.calcSkuTotal()" style="text-align:center;">'+
-                    '<input type="text" class="form-control costing-item-price" readonly style="text-align:center;">'+
-                    '<input type="text" class="form-control costing-item-total" readonly value="0" style="text-align:center;">'+
+                    '<div class="po-search-wrap" style="position:relative;">' +
+                        '<input type="text" class="form-control costing-item-search" placeholder="🔍 ابحث عن مادة تعبئة..." ' +
+                            'data-material-id="" oninput="app._pkgSearchMat(this)" autocomplete="off" style="font-size:0.82rem;">' +
+                        '<div class="costing-item-results" style="display:none;position:absolute;background:#fff;border:1px solid #ddd;border-radius:6px;max-height:160px;overflow-y:auto;z-index:9999;width:100%;box-shadow:0 4px 12px rgba(0,0,0,0.15);top:100%;right:0;"></div>' +
+                    '</div>' +
+                    '<input type="text" class="form-control costing-item-unit" readonly style="text-align:center;">' +
+                    '<input type="number" class="form-control costing-item-qty" value="1" min="1" oninput="app.calcSkuTotal()" style="text-align:center;">' +
+                    '<input type="text" class="form-control costing-item-price" readonly style="text-align:center;">' +
+                    '<input type="text" class="form-control costing-item-total" readonly value="0" style="text-align:center;">' +
                     '<button class="btn btn-danger btn-sm" style="padding:0.3rem 0.5rem;" onclick="this.parentElement.remove();app.calcSkuTotal()"><i class="fas fa-times"></i></button>';
                 tbody.appendChild(row);
             }
@@ -4706,11 +4706,52 @@
             }
 
             // عند اختيار مادة تعبئة من القائمة المنسدلة — يملأ السعر والوحدة تلقائياً
+            _pkgSearchMat(input) {
+                const resultsDiv = input.closest('.po-search-wrap')?.querySelector('.costing-item-results');
+                if (!resultsDiv) return;
+                const q = input.value.trim().toLowerCase();
+                if (!q) { resultsDiv.style.display = 'none'; return; }
+                const pkgMats = (storage.get('rawMaterials') || [])
+                    .filter(m => m.materialType === 'packaging' && m.name.toLowerCase().includes(q))
+                    .slice(0, 8);
+                if (!pkgMats.length) { resultsDiv.style.display = 'none'; return; }
+                resultsDiv.innerHTML = pkgMats.map(m => `
+                    <div onclick="app._pkgSelectMat(this, '${m.id}', '${m.name.replace(/'/g,"\\'")}', ${m.costPrice||0}, '${m.unit||''}')"
+                         style="padding:0.4rem 0.75rem;cursor:pointer;font-size:0.82rem;text-align:right;border-bottom:1px solid #f0f0f0;">
+                        <strong>${m.name}</strong>
+                        <span style="color:#10b981;font-size:0.75rem;margin-right:0.5rem;">${(m.costPrice||0).toFixed(2)} ر.س/${m.unit||''}</span>
+                    </div>`).join('');
+                resultsDiv.style.display = 'block';
+                // إغلاق عند الضغط خارج النتائج
+                setTimeout(() => {
+                    document.addEventListener('click', function close(e) {
+                        if (!e.target.closest('.po-search-wrap')) { resultsDiv.style.display = 'none'; }
+                        document.removeEventListener('click', close);
+                    });
+                }, 100);
+            }
+
+            _pkgSelectMat(el, matId, matName, price, unit) {
+                const row = el.closest('.pkg-grid-row');
+                if (!row) return;
+                const input = row.querySelector('.costing-item-search');
+                if (input) { input.value = matName; input.dataset.materialId = matId; }
+                const qty = parseInt(row.querySelector('.costing-item-qty')?.value) || 1;
+                const priceInput = row.querySelector('.costing-item-price');
+                const unitInput  = row.querySelector('.costing-item-unit');
+                const totalInput = row.querySelector('.costing-item-total');
+                if (priceInput) priceInput.value = price ? price.toFixed(2) : '';
+                if (unitInput)  unitInput.value  = unit;
+                if (totalInput) totalInput.value = (qty * price).toFixed(2);
+                const resultsDiv = el.closest('.po-search-wrap')?.querySelector('.costing-item-results');
+                if (resultsDiv) resultsDiv.style.display = 'none';
+                this.calcSkuTotal();
+            }
+
             onPkgSelectChange(sel) {
                 const materialId = sel.value;
                 const row = sel.closest('.pkg-grid-row');
                 if (!row) return;
-                // نقرأ البيانات مباشرة من قاعدة البيانات لتجنب أي تحريف للأرقام
                 const allMats = storage.get('rawMaterials') || [];
                 const mat = allMats.find(m => m.id === materialId);
                 const price = mat ? mat.costPrice : 0;
