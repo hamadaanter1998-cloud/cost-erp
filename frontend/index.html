@@ -5542,8 +5542,9 @@
                 const rawDiv = document.getElementById('cpoRawMatsBody');
                 const _po2 = storage.get('purchaseOrders') || [];
                 const _prod2 = storage.get('productionOrders') || [];
+                const _allRms = storage.get('rawMaterials') || [];
                 const _calcAvail = (matId) => {
-                    const mat = rms.find(m => m.id === matId);
+                    const mat = _allRms.find(m => m.id === matId);
                     if (!mat) return 0;
                     const opening = mat.openingStock ?? mat.quantity ?? 0;
                     const purchased = _po2.filter(po => po.status==='received').reduce((s,po) => { const it=(po.items||[]).find(i=>i.materialId===matId); return s+(it?it.qty||0:0); }, 0);
