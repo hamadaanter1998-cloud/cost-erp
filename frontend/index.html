@@ -2086,9 +2086,6 @@
                             ${this.getUnitsOptions(material ? material.unit : '')}
                         </select></div>
                         <div class="form-group"><label>سعر التكلفة</label><input type="number" id="rmCost" class="form-control" step="0.01" value="${material ? material.costPrice : ''}"></div>
-                        <div class="form-group"><label>رقم الفاتورة</label><input type="text" id="rmInvoice" class="form-control" value="${material ? material.invoiceNo : 'INV-'+Math.floor(Math.random()*9000+1000)}"></div>
-                        <div class="form-group"><label>المورد</label><select id="rmSupplier" class="form-control"><option value="">اختر المورد</option>${suppliers.map(s=>`<option value="${s.name}" ${material&&material.supplier===s.name?'selected':''}>${s.name}</option>`).join('')}</select></div>
-                        <div class="form-group"><label>تاريخ الشراء</label><input type="date" id="rmDate" class="form-control" value="${material ? material.purchaseDate : new Date().toISOString().split('T')[0]}"></div>
                         <div class="form-group"><label>الرصيد الافتتاحي</label><input type="number" id="rmQty" class="form-control" step="0.01" value="${material ? (material.openingStock ?? material.quantity) : ''}" placeholder="الكمية عند الإضافة"></div>
                         <div class="form-group"><label>الحد الأدنى</label><input type="number" id="rmMinStock" class="form-control" step="0.01" value="${material ? material.minStock : '50'}"></div>
                     `,
@@ -2108,9 +2105,6 @@
                             subType:      document.getElementById('rmSubType').value,
                             unit: document.getElementById('rmUnit').value,
                             costPrice,
-                            invoiceNo: document.getElementById('rmInvoice').value.trim(),
-                            supplier: document.getElementById('rmSupplier').value,
-                            purchaseDate: document.getElementById('rmDate').value,
                             quantity,
                             openingStock: quantity,
                             minStock: parseFloat(document.getElementById('rmMinStock').value)
