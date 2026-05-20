@@ -4721,11 +4721,34 @@
                         <strong>${m.name}</strong>
                         <span style="color:#10b981;font-size:0.75rem;margin-right:0.5rem;">${(m.costPrice||0).toFixed(2)} ر.س/${m.unit||''}</span>
                     </div>`).join('');
-                resultsDiv.style.display = 'block';
-                // إغلاق عند الضغط خارج النتائج
+                // حساب موضع الـ dropdown فوق أو تحت حسب المساحة المتاحة
+                resultsDiv.style.cssText = `
+                    display:block;
+                    position:fixed;
+                    background:#fff;
+                    border:1px solid #ddd;
+                    border-radius:6px;
+                    max-height:200px;
+                    overflow-y:auto;
+                    z-index:99999;
+                    width:260px;
+                    box-shadow:0 8px 24px rgba(0,0,0,0.2);
+                `;
+                // تحديد الموضع بناءً على مكان الـ input في الشاشة
+                const rect = input.getBoundingClientRect();
+                const spaceBelow = window.innerHeight - rect.bottom;
+                if (spaceBelow < 220) {
+                    resultsDiv.style.top  = (rect.top - 210 + window.scrollY) + 'px';
+                } else {
+                    resultsDiv.style.top  = (rect.bottom + window.scrollY + 2) + 'px';
+                }
+                resultsDiv.style.left = rect.left + 'px';
+
                 setTimeout(() => {
                     document.addEventListener('click', function close(e) {
-                        if (!e.target.closest('.po-search-wrap')) { resultsDiv.style.display = 'none'; }
+                        if (!e.target.closest('.po-search-wrap') && e.target !== resultsDiv) {
+                            resultsDiv.style.display = 'none';
+                        }
                         document.removeEventListener('click', close);
                     });
                 }, 100);
