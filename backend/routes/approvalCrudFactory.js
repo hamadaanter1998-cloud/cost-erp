@@ -122,10 +122,13 @@ const createApprovalCrudRouter = (tableName, tableConfig) => {
             const userName = req.user.name;
 
             const { data: currentData, error: fetchError } = await supabase
-                .from(tableName).select('*').eq('id', id).single();
-            if (fetchError || !currentData) {
+                .from(tableName).select('*').eq('id', id).maybeSingle();
+            if (fetchError) {
                 console.error('DELETE fetch error:', tableName, id, fetchError?.message);
-                return res.status(404).json({ success: false, error: fetchError?.message || 'غير موجود' });
+                return res.status(500).json({ success: false, error: fetchError.message });
+            }
+            if (!currentData) {
+                return res.status(404).json({ success: false, error: 'السجل غير موجود' });
             }
 
             if (userRole === 'admin') {
