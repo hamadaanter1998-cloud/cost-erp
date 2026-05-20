@@ -4440,7 +4440,7 @@
                                 <label style="font-size:0.85rem;font-weight:600;">⚡ اختر قالب حجم (يملأ الحقول تلقائياً)</label>
                                 <select id="skuTemplateSelect" class="form-control" onchange="app.applySkuSizeTemplate(this.value)">
                                     <option value="">— اختر قالباً لتعبئة البيانات تلقائياً —</option>
-                                    ${templates.map(t => `<option value="${t.id}">${t.name}  ·  ${t.sizeLiters}ل  ·  ${t.unitsPerCarton} عبوة/كرتون  ·  ${(t.sizeLiters*t.unitsPerCarton).toFixed(2)}ل/كرتون</option>`).join('')}
+                                    ${templates.map(t => `<option value="${t.id}">${t.name}</option>`).join('')}
                                 </select>
                             </div>`;
                         })()}
