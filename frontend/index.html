@@ -4528,14 +4528,14 @@
                             <input type="number" id="skuSellingPrice" class="form-control" step="0.01" min="0"
                                 value="${existingCosting?.sellingPrice || ''}"
                                 placeholder="سعر بيع الكرتون لهذا الحجم"
-                                oninput="app._calcSkuMargin()">
+                                oninput="app._calcSkuMargin('carton')">
                         </div>
                         <div class="form-group">
                             <label>💰 سعر بيع الوحدة (ر.س)</label>
                             <input type="number" id="skuSellingPriceUnit" class="form-control" step="0.01" min="0"
                                 value="${existingCosting?.sellingPriceUnit || ''}"
-                                placeholder="سعر بيع الوحدة الواحدة"
-                                oninput="app._calcSkuMargin()">
+                                placeholder="يُحسب تلقائياً من سعر الكرتون ÷ عدد الحبات"
+                                oninput="app._calcSkuMargin('unit')">
                         </div>
                         <div id="skuMarginDisplay" style="display:${(existingCosting?.sellingPrice)?'flex':'none'};background:#f0fdf4;border-radius:8px;padding:0.6rem 1rem;justify-content:space-between;align-items:center;font-size:0.88rem;margin-bottom:0.5rem;">
                             <span>📊 هامش الربح للكرتون:</span>
@@ -4614,18 +4614,16 @@
                         const data = result.value;
                         const prod = products.find(p => p.id === data.productId);
                         data.productName = prod ? prod.name : '';
-                        if (existingCosting) {
-                            const index = productCostings.findIndex(pc => pc.id === costingId);
-                            if (index !== -1) productCostings[index] = { ...existingCosting, ...data };
-                        } else {
-                            productCostings.push({ id: crypto.randomUUID(), ...data, createdAt: new Date().toISOString() });
-                        }
-                        // existingCosting = الـ record الموجود في Supabase مسبقاً
-                        // لو edit → update، لو جديد → create
                         const action = existingCosting ? 'update' : 'create';
+                        const newId = crypto.randomUUID();
                         const pcItem = existingCosting
                             ? { ...existingCosting, ...data }
-                            : { id: crypto.randomUUID(), ...data, createdAt: new Date().toISOString() };
+                            : { id: newId, ...data, createdAt: new Date().toISOString() };
+                        // تحديث الـ cache المحلي
+                        const pcIdx = productCostings.findIndex(pc => pc.id === (existingCosting?.id || newId));
+                        if (pcIdx !== -1) productCostings[pcIdx] = pcItem;
+                        else productCostings.push(pcItem);
+                        storage.set('productCostings', productCostings);
                         const rPC = await storage.crud('productCostings', action, pcItem);
                         if (!rPC.pending) { storage.showToast(`✅ تم حفظ ${data.skuSize} بتكلفة كرتون ${data.totalCartonCost.toFixed(2)} ر.س`); this.logActivity('حفظ SKU: ' + data.productId + ' - ' + data.skuSize); this.navigateTo('productCosting'); }
                     }
@@ -4650,25 +4648,47 @@
                 this.calcSkuTotal();
             }
 
-            _calcSkuMargin() {
-                const selling = parseFloat(document.getElementById('skuSellingPrice')?.value) || 0;
-                const cost    = parseFloat(document.getElementById('skuTotalCost')?.textContent) ||
-                                parseFloat(document.getElementById('skuRawCost')?.textContent?.replace(/[^\d.]/g, '')) || 0;
-                const display = document.getElementById('skuMarginDisplay');
-                const val     = document.getElementById('skuMarginVal');
-                if (!display || !val) return;
-                if (selling > 0 && cost > 0) {
-                    const margin = ((selling - cost) / selling * 100).toFixed(1);
-                    val.textContent = `${margin}%`;
-                    val.style.color = parseFloat(margin) >= 0 ? '#10b981' : '#dc3545';
-                    display.style.display = 'flex';
-                    // تحديث سعر الوحدة تلقائياً لو فارغ
-                    const unitsEl = document.getElementById('skuUnitsPerCarton');
-                    const unitPriceEl = document.getElementById('skuSellingPriceUnit');
-                    if (unitPriceEl && !unitPriceEl.value && unitsEl?.value) {
-                        const units = parseInt(unitsEl.value) || 1;
-                        unitPriceEl.value = (selling / units).toFixed(2);
+            _calcSkuMargin(changedField) {
+                const sellingCartonEl = document.getElementById('skuSellingPrice');
+                const sellingUnitEl   = document.getElementById('skuSellingPriceUnit');
+                const unitsEl         = document.getElementById('skuUnitsPerCarton');
+                const display         = document.getElementById('skuMarginDisplay');
+                const val             = document.getElementById('skuMarginVal');
+                if (!sellingCartonEl || !sellingUnitEl || !unitsEl) return;
+
+                const units = parseInt(unitsEl.value) || 0;
+
+                // الحساب التلقائي بين سعر الكرتون وسعر الحبة
+                if (changedField === 'carton' && units > 0) {
+                    const cartonPrice = parseFloat(sellingCartonEl.value) || 0;
+                    if (cartonPrice > 0) {
+                        sellingUnitEl.value = (cartonPrice / units).toFixed(2);
                     }
+                } else if (changedField === 'unit' && units > 0) {
+                    const unitPrice = parseFloat(sellingUnitEl.value) || 0;
+                    if (unitPrice > 0) {
+                        sellingCartonEl.value = (unitPrice * units).toFixed(2);
+                    }
+                }
+
+                // جلب إجمالي تكلفة الكرتون من calcSkuTotal
+                const grandEl = document.getElementById('skuGrandTotal');
+                const cartonCost = grandEl
+                    ? parseFloat(grandEl.textContent?.replace(/[^\d.]/g, '')) || 0
+                    : 0;
+
+                const selling = parseFloat(sellingCartonEl.value) || 0;
+
+                if (!display || !val) return;
+                if (selling > 0 && cartonCost > 0) {
+                    const margin = ((selling - cartonCost) / selling * 100);
+                    val.textContent = `${margin.toFixed(1)}%  (ربح: ${(selling - cartonCost).toFixed(2)} ر.س)`;
+                    val.style.color = margin >= 0 ? '#10b981' : '#dc3545';
+                    display.style.display = 'flex';
+                } else if (selling > 0) {
+                    val.textContent = 'أدخل بيانات التكلفة لحساب الهامش';
+                    val.style.color = '#94a3b8';
+                    display.style.display = 'flex';
                 } else {
                     display.style.display = 'none';
                 }
@@ -4732,6 +4752,8 @@
                 const unitEl = document.getElementById('skuUnitCost');
                 if (grandEl) grandEl.textContent = grandTotal.toFixed(2) + ' ر.س';
                 if (unitEl) unitEl.textContent = unitCost.toFixed(4) + ' ر.س';
+                // تحديث هامش الربح بعد تغيير التكلفة
+                this._calcSkuMargin(null);
             }
 
             async deleteSkuCosting(skuId) {
