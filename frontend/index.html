@@ -4905,6 +4905,7 @@
                         <td><span class="status-badge status-${order.status==='completed'?'success':'warning'}">${order.status==='completed'?'مكتمل':'قيد التنفيذ'}</span></td>
                         <td class="actions-btn">
                             <button class="btn btn-info btn-sm" onclick="app.viewProductionOrder('${order.id}')"><i class="fas fa-eye"></i></button>
+                            <button class="btn btn-secondary btn-sm" onclick="app.printProductionOrder('${order.id}')" title="طباعة"><i class="fas fa-print"></i></button>
                             <button class="btn btn-danger btn-sm" onclick="app.deleteProductionOrder('${order.id}')"><i class="fas fa-trash"></i></button>
                         </td>
                     </tr>`;
@@ -5918,7 +5919,163 @@
                 });
             }
 
-            async deleteProductionOrder(orderId) {
+            printProductionOrder(orderId) {
+                const orders   = storage.get('productionOrders') || [];
+                const products = storage.get('products') || [];
+                const order = orders.find(o => o.id === orderId);
+                if (!order) return;
+
+                const isTon    = order.orderType === 'ton';
+                const isCarton = order.orderType === 'carton';
+                const prod     = products.find(p => p.id === order.productId);
+                const orderDate = order.date ? new Date(order.date).toLocaleDateString('ar-SA') : '—';
+                const company   = 'نظام ERP الصناعي';
+
+                // بناء جدول المواد
+                const mats = order.materials || [];
+                const rawMats   = mats.filter(m => m.category === 'rawMaterial' || !m.category);
+                const packMats  = mats.filter(m => m.category === 'packaging');
+
+                const matRows = (arr) => arr.map((m, i) => `
+                    <tr>
+                        <td>${i+1}</td>
+                        <td>${m.materialName || m.name || '—'}</td>
+                        <td>${m.unit || '—'}</td>
+                        <td>${(m.requiredQty || 0).toFixed(3)}</td>
+                        <td>${(m.price || 0).toFixed(2)}</td>
+                        <td>${((m.requiredQty||0) * (m.price||0)).toFixed(2)}</td>
+                    </tr>`).join('');
+
+                // بناء ملخص الكرتون لو كان carton
+                const subOrderRows = isCarton ? '' : (order.subOrders || []).map(sub => `
+                    <tr>
+                        <td>${sub.productName || sub.productId}</td>
+                        <td>${sub.quantity} كيلو</td>
+                        <td>${sub.cost?.toFixed(2) || '0.00'} ر.س</td>
+                    </tr>`).join('');
+
+                const html = `<!DOCTYPE html>
+<html dir="rtl" lang="ar">
+<head>
+<meta charset="UTF-8">
+<title>أمر إنتاج - ${order.id?.slice(0,8)}</title>
+<style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Arial', sans-serif; font-size: 13px; color: #1a1a1a; background: #fff; padding: 20px; direction: rtl; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 3px solid #1e40af; padding-bottom: 12px; margin-bottom: 16px; }
+    .company { font-size: 20px; font-weight: 800; color: #1e40af; }
+    .doc-title { font-size: 16px; font-weight: 700; color: #374151; margin-top: 4px; }
+    .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; background: #f8fafc; border-radius: 8px; padding: 12px; margin-bottom: 16px; border: 1px solid #e2e8f0; }
+    .meta-item { display: flex; flex-direction: column; }
+    .meta-label { font-size: 10px; color: #6b7280; font-weight: 600; text-transform: uppercase; }
+    .meta-value { font-size: 13px; font-weight: 700; color: #111827; margin-top: 2px; }
+    .section-title { font-size: 13px; font-weight: 800; color: #1e40af; border-right: 4px solid #1e40af; padding-right: 8px; margin: 14px 0 8px; }
+    table { width: 100%; border-collapse: collapse; font-size: 12px; margin-bottom: 12px; }
+    thead tr { background: #1e40af; color: #fff; }
+    th { padding: 7px 8px; text-align: right; font-weight: 700; }
+    td { padding: 6px 8px; border-bottom: 1px solid #e5e7eb; }
+    tr:nth-child(even) td { background: #f8fafc; }
+    .totals { background: #1e40af; color: #fff; border-radius: 8px; padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; margin-top: 8px; }
+    .totals .t-label { font-size: 12px; opacity: 0.85; }
+    .totals .t-value { font-size: 16px; font-weight: 800; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+    .badge-carton { background: #dbeafe; color: #1e40af; }
+    .badge-ton    { background: #d1fae5; color: #065f46; }
+    .footer { margin-top: 24px; border-top: 1px solid #e5e7eb; padding-top: 10px; display: flex; justify-content: space-between; font-size: 10px; color: #9ca3af; }
+    @media print {
+        body { padding: 10px; }
+        .no-print { display: none; }
+    }
+</style>
+</head>
+<body>
+<div class="no-print" style="margin-bottom:16px;">
+    <button onclick="window.print()" style="background:#1e40af;color:#fff;border:none;border-radius:6px;padding:8px 20px;font-size:14px;cursor:pointer;font-family:Arial;">
+        🖨️ طباعة
+    </button>
+    <button onclick="window.close()" style="background:#6b7280;color:#fff;border:none;border-radius:6px;padding:8px 16px;font-size:14px;cursor:pointer;margin-right:8px;font-family:Arial;">
+        إغلاق
+    </button>
+</div>
+
+<div class="header">
+    <div>
+        <div class="company">${company}</div>
+        <div class="doc-title">أمر إنتاج ${isTon ? 'بالطن' : 'بالكرتون'}</div>
+    </div>
+    <div style="text-align:left;">
+        <div style="font-size:11px;color:#6b7280;">رقم الأمر</div>
+        <div style="font-size:14px;font-weight:700;font-family:monospace;">${order.id?.slice(0,8).toUpperCase()}</div>
+        <div style="margin-top:4px;"><span class="badge ${isTon?'badge-ton':'badge-carton'}">${isTon?'طن':'كرتون'}</span></div>
+    </div>
+</div>
+
+<div class="meta-grid">
+    <div class="meta-item"><span class="meta-label">المنتج</span><span class="meta-value">${order.productName || prod?.name || '—'}</span></div>
+    <div class="meta-item"><span class="meta-label">تاريخ الأمر</span><span class="meta-value">${orderDate}</span></div>
+    ${isCarton ? `
+    <div class="meta-item"><span class="meta-label">الحجم / SKU</span><span class="meta-value">${order.skuSize || '—'}</span></div>
+    <div class="meta-item"><span class="meta-label">عدد الكراتين</span><span class="meta-value">${order.cartonCount || 0} كرتون</span></div>
+    <div class="meta-item"><span class="meta-label">إجمالي الوحدات المنتجة</span><span class="meta-value">${order.unitsProduced || 0} وحدة</span></div>
+    <div class="meta-item"><span class="meta-label">إجمالي اللترات</span><span class="meta-value">${(order.totalLiters||0).toFixed(2)} لتر</span></div>
+    ` : `
+    <div class="meta-item"><span class="meta-label">إجمالي الكميات</span><span class="meta-value">${(order.subOrders||[]).reduce((s,o)=>s+o.quantity,0).toFixed(1)} كيلو</span></div>
+    <div class="meta-item"><span class="meta-label">عدد المنتجات</span><span class="meta-value">${(order.subOrders||[]).length} صنف</span></div>
+    `}
+    <div class="meta-item"><span class="meta-label">الحالة</span><span class="meta-value">${order.status==='completed'?'✅ مكتمل':'⏳ قيد التنفيذ'}</span></div>
+    <div class="meta-item"><span class="meta-label">إجمالي التكلفة</span><span class="meta-value" style="color:#1e40af;">${(order.totalCost||0).toFixed(2)} ر.س</span></div>
+</div>
+
+${isCarton && (order.subOrders||[]).length > 0 ? `
+<div class="section-title">📦 الأصناف المنتجة</div>
+<table>
+    <thead><tr><th>المنتج</th><th>الكمية</th><th>التكلفة</th></tr></thead>
+    <tbody>${subOrderRows}</tbody>
+</table>` : ''}
+
+${rawMats.length > 0 ? `
+<div class="section-title">🧪 المواد الخام المستخدمة</div>
+<table>
+    <thead><tr><th>#</th><th>المادة</th><th>الوحدة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead>
+    <tbody>${matRows(rawMats)}</tbody>
+</table>` : ''}
+
+${packMats.length > 0 ? `
+<div class="section-title">📦 مواد التغليف</div>
+<table>
+    <thead><tr><th>#</th><th>المادة</th><th>الوحدة</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr></thead>
+    <tbody>${matRows(packMats)}</tbody>
+</table>` : ''}
+
+<div class="totals">
+    <div>
+        <div class="t-label">تكلفة المواد الخام</div>
+        <div>${(order.rawMaterialCost||0).toFixed(2)} ر.س</div>
+    </div>
+    ${isCarton ? `<div>
+        <div class="t-label">تكلفة التغليف</div>
+        <div>${(order.packagingCost||0).toFixed(2)} ر.س</div>
+    </div>` : ''}
+    <div>
+        <div class="t-label">إجمالي التكلفة</div>
+        <div class="t-value">${(order.totalCost||0).toFixed(2)} ر.س</div>
+    </div>
+    ${isCarton ? `<div>
+        <div class="t-label">تكلفة الوحدة</div>
+        <div class="t-value">${order.cartonCount > 0 ? ((order.totalCost||0)/order.cartonCount).toFixed(2) : '—'} ر.س</div>
+    </div>` : ''}
+</div>
+
+<div class="footer">
+    <span>تاريخ الطباعة: ${new Date().toLocaleString('ar-SA')}</span>
+    <span>معرّف الأمر: ${order.id}</span>
+</div>
+</body></html>`;
+
+                const win = window.open('', '_blank', 'width=800,height=900');
+                win.document.write(html);
+                win.document.close();
+            }
                 Swal.fire({ title: 'تأكيد الحذف', text: 'هل أنت متأكد؟ سيتم إعادة المواد الخام المنصرفة للمخزون.', icon: 'warning', showCancelButton: true,
                     confirmButtonText: 'نعم', cancelButtonText: 'إلغاء', confirmButtonColor: '#dc3545' }).then(async (
                     result) => {
