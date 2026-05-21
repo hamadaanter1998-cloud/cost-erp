@@ -1761,7 +1761,8 @@
                     const p = g.product;
                     const headerBg = headerColors[gi % headerColors.length];
                     const skuRows = g.skus.map(sku => {
-                        const selling    = p.sellingPrice || 0;
+                        const selling    = sku.sellingPrice || p.sellingPrice || 0;
+                        const sellingUnit= sku.sellingPriceUnit || 0;
                         const cartonCost = sku.totalCartonCost || 0;
                         const unitCost   = sku.totalUnitCost   || 0;
                         const margin     = selling > 0 ? (((selling - cartonCost) / selling) * 100) : 0;
@@ -1789,7 +1790,8 @@
                             </td>
                             <td style="padding:0.7rem 1rem;">
                                 <span style="font-weight:800;color:var(--success);">${selling > 0 ? selling.toFixed(2) : '—'}</span>
-                                <span style="color:var(--text-secondary);font-size:0.75rem;"> ر.س</span>
+                                <span style="color:var(--text-secondary);font-size:0.75rem;"> ر.س/كرتون</span>
+                                ${sellingUnit > 0 ? `<br><span style="font-weight:600;color:#0891b2;font-size:0.8rem;">${sellingUnit.toFixed(2)} ر.س/وحدة</span>` : ''}
                             </td>
                             <td style="padding:0.7rem 1rem;">
                                 <span style="display:inline-flex;align-items:center;gap:0.3rem;background:${marginColor}22;color:${marginColor};padding:3px 10px;border-radius:20px;font-weight:800;font-size:0.85rem;border:1px solid ${marginColor}44;">
@@ -7045,20 +7047,33 @@
                 const q = query.trim().toLowerCase();
                 if (!q) { results.style.display = 'none'; return; }
                 const prods = (window._soProducts || storage.get('products') || []).filter(p => p.name.toLowerCase().includes(q)).slice(0,8);
+                const costings = storage.get('productCostings') || [];
                 if (!prods.length) { results.style.display = 'none'; return; }
-                results.innerHTML = prods.map(p => `
-                    <div onclick="app._soAddProductById('${p.id}','${p.name.replace(/'/g,"\\'")}','${p.unit||'كرتون'}',${p.sellingPrice||p.price||0})">
-                        <strong>${p.name}</strong>
-                        <span style="color:#64748b;font-size:0.75rem;margin-right:0.5rem;">${p.unit||''}</span>
-                        <span style="color:#10b981;font-size:0.75rem;">${(p.sellingPrice||p.price||0).toLocaleString('ar-SA')} ر.س</span>
-                    </div>`).join('');
+                results.innerHTML = prods.map(p => {
+                    const skus = costings.filter(c => c.productId === p.id && c.sellingPrice);
+                    if (skus.length > 0) {
+                        return skus.map(sku => `
+                            <div onclick="app._soAddProductById('${p.id}','${(p.name+(sku.skuSize?' '+sku.skuSize:'')).replace(/'/g,"\\'")}','${sku.skuSize||p.unit||'كرتون'}',${sku.sellingPrice||0},'${sku.id}')"
+                                 style="padding:0.4rem 0.75rem;cursor:pointer;font-size:0.82rem;text-align:right;border-bottom:1px solid #f0f0f0;">
+                                <strong>${p.name}</strong>
+                                ${sku.skuSize ? `<span style="background:#e0e7ff;color:#3730a3;padding:1px 6px;border-radius:8px;font-size:0.72rem;margin-right:4px;">${sku.skuSize}</span>` : ''}
+                                <span style="color:#10b981;font-size:0.75rem;float:left;">${sku.sellingPrice.toFixed(2)} ر.س</span>
+                            </div>`).join('');
+                    }
+                    const price = p.sellingPrice || p.price || 0;
+                    return `
+                        <div onclick="app._soAddProductById('${p.id}','${p.name.replace(/'/g,"\\'")}','${p.unit||'كرتون'}',${price},'')"
+                             style="padding:0.4rem 0.75rem;cursor:pointer;font-size:0.82rem;text-align:right;border-bottom:1px solid #f0f0f0;">
+                            <strong>${p.name}</strong>
+                            <span style="color:#10b981;font-size:0.75rem;float:left;">${price > 0 ? price.toFixed(2)+' ر.س' : 'بدون سعر'}</span>
+                        </div>`;
+                }).join('');
                 results.style.display = 'block';
             }
 
-            _soAddProductById(id, name, unit, price) {
+            _soAddProductById(id, name, unit, price, skuId) {
                 if (!window._soItems) window._soItems = [];
-                if (window._soItems.find(i => i.productId === id)) return;
-                window._soItems.push({ productId: id, name, unit, qty: 1, unitPrice: price });
+                window._soItems.push({ productId: id, skuId: skuId||'', name, unit, qty: 1, unitPrice: price });
                 this._soRenderItems();
                 const input = document.getElementById('soProductSearch');
                 if (input) input.value = '';
@@ -7894,48 +7909,59 @@
                     return;
                 }
                 dd.innerHTML = filtered.slice(0, 15).map(p => {
-                    // Get cost from productCostings if available, else from product.costPrice
-                    const sku = productCostings.find(pc => pc.productId === p.id);
-                    const costUnit = sku ? (sku.totalUnitCost || p.costPrice) : p.costPrice;
-                    return `<div class="qa-product-option" onclick="app.qaAddProduct('${p.id}')">
-                        <span>${p.name} <small style="color:var(--text-secondary);">(${p.id})</small></span>
-                        <span class="cost-badge">تكلفة: ${parseFloat(costUnit).toFixed(2)} ر.س</span>
+                    const skus = productCostings.filter(pc => pc.productId === p.id);
+                    if (skus.length > 1) {
+                        return skus.map(sku => {
+                            const sellingPrice = sku.sellingPrice || sku.sellingPriceUnit || p.sellingPrice || 0;
+                            return `<div class="qa-product-option" onclick="app.qaAddProduct('${p.id}','${sku.id}')">
+                                <span>${p.name} ${sku.skuSize ? `<span style="background:#e0e7ff;color:#3730a3;padding:1px 5px;border-radius:6px;font-size:0.72rem;">${sku.skuSize}</span>` : ''}</span>
+                                <span class="cost-badge">سعر: ${sellingPrice.toFixed(2)} ر.س</span>
+                            </div>`;
+                        }).join('');
+                    }
+                    const sku = skus[0];
+                    const sellingPrice = sku?.sellingPrice || sku?.sellingPriceUnit || p.sellingPrice || 0;
+                    const costUnit = sku ? (sku.totalUnitCost || p.costPrice || 0) : (p.costPrice || 0);
+                    return `<div class="qa-product-option" onclick="app.qaAddProduct('${p.id}','${sku?.id||''}')">
+                        <span>${p.name}</span>
+                        <span class="cost-badge">سعر: ${parseFloat(sellingPrice).toFixed(2)} ر.س</span>
                     </div>`;
                 }).join('');
                 dd.classList.add('open');
             }
 
-            qaAddProduct(productId) {
+            qaAddProduct(productId, skuId) {
                 const products = storage.get('products') || [];
                 const productCostings = storage.get('productCostings') || [];
                 const product = products.find(p => p.id === productId);
                 if (!product) return;
 
-                // Check if already added
-                if ((window.qaItems || []).find(i => i.productId === productId)) {
+                const sku = skuId ? productCostings.find(pc => pc.id === skuId) : productCostings.find(pc => pc.productId === productId);
+                const costUnit = sku ? parseFloat(sku.totalUnitCost || product.costPrice || 0) : parseFloat(product.costPrice || 0);
+                // جلب سعر البيع من SKU أولاً
+                const sellingPrice = parseFloat(sku?.sellingPrice || sku?.sellingPriceUnit || product.sellingPrice || 0);
+                const itemName = product.name + (sku?.skuSize ? ' ' + sku.skuSize : '');
+                const itemKey = productId + (skuId||'');
+
+                if (!window.qaItems) window.qaItems = [];
+                if (window.qaItems.find(i => i.productId === productId && i.skuId === (skuId||''))) {
                     storage.showToast('المنتج مضاف بالفعل', 'warning');
                     document.getElementById('qaProductDropdown').classList.remove('open');
                     document.getElementById('qaProductSearch').value = '';
                     return;
                 }
 
-                // Get best cost: from SKU costing if available
-                const sku = productCostings.find(pc => pc.productId === productId);
-                const costUnit = sku ? parseFloat(sku.totalUnitCost || product.costPrice) : parseFloat(product.costPrice);
-                const sellingPrice = parseFloat(product.sellingPrice);
-
-                if (!window.qaItems) window.qaItems = [];
                 if (!window.qaOriginalPrices) window.qaOriginalPrices = {};
-
                 window.qaItems.push({
                     productId,
-                    name: product.name,
+                    skuId: skuId||'',
+                    name: itemName,
                     costUnit,
                     sellingPrice,
                     quantity: 1,
                     originalSelling: sellingPrice
                 });
-                window.qaOriginalPrices[productId] = sellingPrice;
+                window.qaOriginalPrices[itemKey] = sellingPrice;
 
                 document.getElementById('qaProductDropdown').classList.remove('open');
                 document.getElementById('qaProductSearch').value = '';
