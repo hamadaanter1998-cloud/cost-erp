@@ -6076,6 +6076,8 @@ ${packMats.length > 0 ? `
                 win.document.write(html);
                 win.document.close();
             }
+
+            async deleteProductionOrder(orderId) {
                 Swal.fire({ title: 'تأكيد الحذف', text: 'هل أنت متأكد؟ سيتم إعادة المواد الخام المنصرفة للمخزون.', icon: 'warning', showCancelButton: true,
                     confirmButtonText: 'نعم', cancelButtonText: 'إلغاء', confirmButtonColor: '#dc3545' }).then(async (
                     result) => {
