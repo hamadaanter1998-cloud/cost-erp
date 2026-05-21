@@ -127,7 +127,9 @@ const TABLE_MAP = {
             packaging_cost: p.packagingCost || 0,
             total_carton_cost: p.totalCartonCost || 0,
             total_unit_cost: p.totalUnitCost || 0,
-            carton_items: p.cartonItems || []
+            carton_items: p.cartonItems || [],
+            selling_price: p.sellingPrice || null,
+            selling_price_unit: p.sellingPriceUnit || null
         }),
         fromRow: r => ({
             id: r.id,
@@ -144,6 +146,9 @@ const TABLE_MAP = {
             totalCartonCost: r.total_carton_cost,
             totalUnitCost: r.total_unit_cost,
             cartonItems: r.carton_items || [],
+            sellingPrice: r.selling_price,
+            sellingPriceUnit: r.selling_price_unit,
+            litersPerCarton: r.liters_per_carton,
             createdAt: r.created_at
         })
     },

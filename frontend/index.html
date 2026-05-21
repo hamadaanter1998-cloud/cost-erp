@@ -4619,13 +4619,12 @@
                         const pcItem = existingCosting
                             ? { ...existingCosting, ...data }
                             : { id: newId, ...data, createdAt: new Date().toISOString() };
-                        // تحديث الـ cache المحلي
-                        const pcIdx = productCostings.findIndex(pc => pc.id === (existingCosting?.id || newId));
-                        if (pcIdx !== -1) productCostings[pcIdx] = pcItem;
-                        else productCostings.push(pcItem);
-                        storage.set('productCostings', productCostings);
                         const rPC = await storage.crud('productCostings', action, pcItem);
-                        if (!rPC.pending) { storage.showToast(`✅ تم حفظ ${data.skuSize} بتكلفة كرتون ${data.totalCartonCost.toFixed(2)} ر.س`); this.logActivity('حفظ SKU: ' + data.productId + ' - ' + data.skuSize); this.navigateTo('productCosting'); }
+                        if (!rPC.pending) {
+                            storage.showToast(`✅ تم حفظ ${data.skuSize} بسعر بيع ${data.sellingPrice ? data.sellingPrice.toFixed(2)+' ر.س' : 'غير محدد'}`);
+                            this.logActivity('حفظ SKU: ' + data.productId + ' - ' + data.skuSize);
+                            this.navigateTo('productCosting');
+                        }
                     }
                 });
             }
