@@ -1469,265 +1469,234 @@
             // RENDER DASHBOARD
             // ============================================
             renderDashboard(container) {
-                const rawMaterials = storage.get('rawMaterials') || [];
-                const products = storage.get('products') || [];
-                const suppliers = storage.get('suppliers') || [];
-                const recipes = storage.get('recipes') || [];
-                const productionOrders = storage.get('productionOrders') || [];
-                const totalInventoryCost = rawMaterials.reduce((sum, m) => sum + (m.costPrice * m.quantity), 0);
-                const lowStockItems = rawMaterials.filter(m => m.quantity <= m.minStock);
+                const rawMaterials    = storage.get('rawMaterials')    || [];
+                const products        = storage.get('products')         || [];
+                const suppliers       = storage.get('suppliers')         || [];
+                const customers       = storage.get('customers')         || [];
+                const recipes         = storage.get('recipes')           || [];
+                const productionOrds  = storage.get('productionOrders') || [];
+                const purchaseOrders  = storage.get('purchaseOrders')   || [];
+                const salesOrders     = storage.get('salesOrders')      || [];
+                const productCostings = storage.get('productCostings')   || [];
 
-                let html = `
-                    <div class="page-header">
+                // ── حسابات الأرصدة ────────────────────────────────────
+                const _po  = purchaseOrders.filter(p => p.status==='received');
+                const calcRmBalance = m => {
+                    const op = m.openingStock ?? m.quantity ?? 0;
+                    const pur = _po.reduce((s,po) => { const it=(po.items||[]).find(i=>i.materialId===m.id); return s+(it?it.qty||0:0); },0);
+                    const con = productionOrds.reduce((s,po) => { const e=(po.materials||[]).find(x=>x.materialId===m.id); if(e) return s+(e.requiredQty||0); return s+(po.subOrders||[]).reduce((ss,sub)=>{ const sm=(sub.materials||[]).find(x=>x.materialId===m.id); return ss+(sm?sm.requiredQty||0:0); },0); },0);
+                    return op + pur - con;
+                };
+                const rmWithBal = rawMaterials.map(m => ({ ...m, balance: calcRmBalance(m) }));
+
+                const totalRmValue   = rmWithBal.reduce((s,m) => s + m.balance*(m.costPrice||0), 0);
+                const lowStockRm     = rmWithBal.filter(m => m.balance > 0 && m.balance <= (m.minStock||0));
+                const outStockRm     = rmWithBal.filter(m => m.balance <= 0);
+                const totalSales     = salesOrders.reduce((s,o) => s+(o.totalAmount||0), 0);
+                const totalPurchases = purchaseOrders.reduce((s,o) => s+(o.totalAmount||0), 0);
+                const totalProdCost  = productionOrds.filter(o=>o.status==='completed').reduce((s,o)=>s+(o.totalCost||0),0);
+                const pendingSales   = salesOrders.filter(o=>o.status==='draft'||o.status==='confirmed').length;
+                const pendingPurch   = purchaseOrders.filter(o=>o.status==='draft'||o.status==='pending'||o.status==='approved').length;
+
+                // آخر 5 فواتير مبيعات
+                const recentSales = salesOrders.slice().sort((a,b)=>new Date(b.createdAt||0)-new Date(a.createdAt||0)).slice(0,5);
+                // آخر 5 أوامر إنتاج
+                const recentProd  = productionOrds.slice().sort((a,b)=>new Date(b.date||0)-new Date(a.date||0)).slice(0,5);
+                // مبيعات آخر 6 أشهر
+                const monthlyMap = {};
+                salesOrders.forEach(o => { if(!o.orderDate) return; const k=o.orderDate.slice(0,7); monthlyMap[k]=(monthlyMap[k]||0)+(o.totalAmount||0); });
+                const mKeys = Object.keys(monthlyMap).sort().slice(-6);
+                const mVals = mKeys.map(k => monthlyMap[k]);
+
+                const fmt = v => v >= 1000000 ? (v/1000000).toFixed(1)+'M' : v >= 1000 ? (v/1000).toFixed(1)+'k' : v.toFixed(0);
+                const now = new Date().toLocaleDateString('ar-SA', { weekday:'long', year:'numeric', month:'long', day:'numeric' });
+
+                container.innerHTML = `
+                    <div class="page-header" style="margin-bottom:1.5rem;">
                         <div>
-                            <h2><i class="fas fa-chart-pie"></i> لوحة التحكم</h2>
-                            <p>نظرة عامة على أداء النظام والمخزون</p>
+                            <h2 style="font-size:1.6rem;"><i class="fas fa-tachometer-alt"></i> لوحة التحكم</h2>
+                            <p style="color:var(--text-secondary);">${now}</p>
                         </div>
                         <div class="d-flex gap-2 flex-wrap">
-                            <button class="btn btn-primary btn-sm" onclick="app.navigateTo('rawMaterials')"><i class="fas fa-plus"></i> إضافة مادة خام</button>
-                            <button class="btn btn-success btn-sm" onclick="app.navigateTo('production')"><i class="fas fa-play"></i> بدء إنتاج</button>
-                            <button class="btn btn-info btn-sm" onclick="app.navigateTo('reports')"><i class="fas fa-chart-bar"></i> التقارير</button>
+                            <button class="btn btn-primary btn-sm" onclick="app.navigateTo('purchases')"><i class="fas fa-shopping-cart"></i> أمر شراء</button>
+                            <button class="btn btn-success btn-sm" onclick="app.navigateTo('production')"><i class="fas fa-industry"></i> أمر إنتاج</button>
+                            <button class="btn btn-info btn-sm" onclick="app.navigateTo('sales')"><i class="fas fa-file-invoice-dollar"></i> فاتورة مبيعات</button>
                         </div>
                     </div>
-                    <div class="stats-row">
-                        <div class="stat-card card-blue" onclick="app.navigateTo('rawMaterials')">
-                            <div class="icon bg-blue"><i class="fas fa-cubes"></i></div>
-                            <div class="info">
-                                <p>المواد الخام</p>
-                                <h3>${rawMaterials.length}</h3>
-                                <span class="trend trend-up"><i class="fas fa-arrow-up"></i> ${lowStockItems.length} منخفض</span>
-                            </div>
+
+                    <!-- KPI Row 1 -->
+                    <div class="stats-row" style="margin-bottom:1rem;">
+                        <div class="stat-card card-green" onclick="app.navigateTo('sales')" style="cursor:pointer;">
+                            <div class="icon bg-green"><i class="fas fa-cash-register"></i></div>
+                            <div class="info"><p>إجمالي المبيعات</p><h3 style="font-size:1.2rem;">${fmt(totalSales)}</h3><span class="trend trend-up">ريال · ${pendingSales} معلق</span></div>
                         </div>
-                        <div class="stat-card card-green" onclick="app.navigateTo('products')">
-                            <div class="icon bg-green"><i class="fas fa-boxes"></i></div>
-                            <div class="info">
-                                <p>المنتجات النهائية</p>
-                                <h3>${products.length}</h3>
-                                <span class="trend trend-up"><i class="fas fa-check-circle"></i> متاح</span>
-                            </div>
+                        <div class="stat-card card-blue" onclick="app.navigateTo('purchases')" style="cursor:pointer;">
+                            <div class="icon bg-blue"><i class="fas fa-shopping-cart"></i></div>
+                            <div class="info"><p>إجمالي المشتريات</p><h3 style="font-size:1.2rem;">${fmt(totalPurchases)}</h3><span class="trend">ريال · ${pendingPurch} معلق</span></div>
                         </div>
-                        <div class="stat-card card-orange">
-                            <div class="icon bg-orange"><i class="fas fa-money-bill-wave"></i></div>
-                            <div class="info">
-                                <p>تكلفة المخزون</p>
-                                <h3 style="font-size:1.35rem;">${(totalInventoryCost/1000).toFixed(1)}k</h3>
-                                <span class="trend trend-up">ريال سعودي</span>
-                            </div>
+                        <div class="stat-card card-purple" onclick="app.navigateTo('production')" style="cursor:pointer;">
+                            <div class="icon bg-purple"><i class="fas fa-industry"></i></div>
+                            <div class="info"><p>تكلفة الإنتاج</p><h3 style="font-size:1.2rem;">${fmt(totalProdCost)}</h3><span class="trend">${productionOrds.filter(o=>o.status==='completed').length} أمر مكتمل</span></div>
                         </div>
-                        <div class="stat-card card-purple" onclick="app.navigateTo('suppliers')">
-                            <div class="icon bg-purple"><i class="fas fa-truck"></i></div>
-                            <div class="info">
-                                <p>الموردين</p>
-                                <h3>${suppliers.length}</h3>
-                                <span class="trend trend-up"><i class="fas fa-handshake"></i> نشط</span>
-                            </div>
-                        </div>
-                        <div class="stat-card card-teal" onclick="app.navigateTo('recipes')">
-                            <div class="icon bg-teal"><i class="fas fa-flask"></i></div>
-                            <div class="info">
-                                <p>التركيبات</p>
-                                <h3>${recipes.length}</h3>
-                                <span class="trend trend-up">وصفة</span>
-                            </div>
-                        </div>
-                        <div class="stat-card card-red" onclick="app.navigateTo('production')">
-                            <div class="icon bg-red"><i class="fas fa-cogs"></i></div>
-                            <div class="info">
-                                <p>أوامر الإنتاج</p>
-                                <h3>${productionOrders.length}</h3>
-                                <span class="trend ${productionOrders.length > 0 ? 'trend-up' : 'trend-down'}">أمر</span>
-                            </div>
+                        <div class="stat-card card-orange" onclick="app.navigateTo('rawMaterials')" style="cursor:pointer;">
+                            <div class="icon bg-orange"><i class="fas fa-boxes"></i></div>
+                            <div class="info"><p>قيمة المخزون</p><h3 style="font-size:1.2rem;">${fmt(totalRmValue)}</h3><span class="trend ${lowStockRm.length>0?'trend-down':'trend-up'}">${lowStockRm.length} منخفض</span></div>
                         </div>
                     </div>
-                    <div class="charts-row">
+
+                    <!-- KPI Row 2 -->
+                    <div class="stats-row" style="margin-bottom:1.5rem;">
+                        <div class="stat-card" onclick="app.navigateTo('rawMaterials')" style="cursor:pointer;">
+                            <div class="icon bg-blue"><i class="fas fa-flask"></i></div>
+                            <div class="info"><p>المواد الخام</p><h3>${rawMaterials.length}</h3><span class="trend">${outStockRm.length} نفد مخزونها</span></div>
+                        </div>
+                        <div class="stat-card" onclick="app.navigateTo('products')" style="cursor:pointer;">
+                            <div class="icon bg-green"><i class="fas fa-box-open"></i></div>
+                            <div class="info"><p>المنتجات</p><h3>${products.length}</h3><span class="trend">${productCostings.length} حجم</span></div>
+                        </div>
+                        <div class="stat-card" onclick="app.navigateTo('customers')" style="cursor:pointer;">
+                            <div class="icon bg-purple"><i class="fas fa-users"></i></div>
+                            <div class="info"><p>العملاء</p><h3>${customers.length}</h3><span class="trend">${salesOrders.length} فاتورة</span></div>
+                        </div>
+                        <div class="stat-card" onclick="app.navigateTo('suppliers')" style="cursor:pointer;">
+                            <div class="icon bg-orange"><i class="fas fa-truck"></i></div>
+                            <div class="info"><p>الموردون</p><h3>${suppliers.length}</h3><span class="trend">${purchaseOrders.length} أمر شراء</span></div>
+                        </div>
+                        <div class="stat-card" onclick="app.navigateTo('recipes')" style="cursor:pointer;">
+                            <div class="icon bg-blue"><i class="fas fa-vials"></i></div>
+                            <div class="info"><p>التركيبات</p><h3>${recipes.length}</h3><span class="trend">تركيبة</span></div>
+                        </div>
+                    </div>
+
+                    <!-- Charts + Tables -->
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;margin-bottom:1.25rem;">
                         <div class="chart-card">
-                            <div class="chart-header"><h3><i class="fas fa-chart-bar"></i> تكلفة المواد الخام (أعلى 10)</h3></div>
-                            <div class="chart-body"><canvas id="chartMaterialsCost"></canvas></div>
+                            <div class="chart-header"><h3><i class="fas fa-chart-line"></i> المبيعات الشهرية</h3></div>
+                            <div class="chart-body"><canvas id="dbMonthlySales" height="140"></canvas></div>
                         </div>
                         <div class="chart-card">
-                            <div class="chart-header"><h3><i class="fas fa-chart-line"></i> المنتجات - المخزون والسعر</h3></div>
-                            <div class="chart-body"><canvas id="chartProducts"></canvas></div>
+                            <div class="chart-header"><h3><i class="fas fa-chart-pie"></i> توزيع المخزون حسب النوع</h3></div>
+                            <div class="chart-body"><canvas id="dbInventoryPie" height="140"></canvas></div>
                         </div>
                     </div>
-                    <div class="table-container" style="margin-top:1.5rem;">
+
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.25rem;margin-bottom:1.25rem;">
+                        <!-- آخر المبيعات -->
+                        <div class="table-container">
+                            <div class="table-header">
+                                <h3><i class="fas fa-file-invoice-dollar"></i> آخر فواتير المبيعات</h3>
+                                <button class="btn btn-info btn-sm" onclick="app.navigateTo('sales')">عرض الكل</button>
+                            </div>
+                            <div class="table-wrapper">
+                                <table>
+                                    <thead><tr><th>الفاتورة</th><th>العميل</th><th>الإجمالي</th><th>الحالة</th></tr></thead>
+                                    <tbody>
+                                        ${recentSales.length===0 ? '<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:1rem;">لا توجد فواتير</td></tr>' :
+                                        recentSales.map(o => {
+                                            const sc={draft:'status-secondary',confirmed:'status-info',delivered:'status-success',cancelled:'status-danger'};
+                                            const sl={draft:'مسودة',confirmed:'مؤكد',delivered:'مسلّم',cancelled:'ملغي'};
+                                            return \`<tr>
+                                                <td style="font-family:monospace;font-size:0.8rem;color:var(--primary);">\${o.orderNumber}</td>
+                                                <td><strong>\${o.customerName||'—'}</strong></td>
+                                                <td style="color:var(--success);font-weight:700;">\${(o.totalAmount||0).toLocaleString('ar-SA',{maximumFractionDigits:0})} ر.س</td>
+                                                <td><span class="status-badge \${sc[o.status]||'status-secondary'}" style="font-size:0.72rem;">\${sl[o.status]||o.status}</span></td>
+                                            </tr>\`;
+                                        }).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- آخر الإنتاج -->
+                        <div class="table-container">
+                            <div class="table-header">
+                                <h3><i class="fas fa-industry"></i> آخر أوامر الإنتاج</h3>
+                                <button class="btn btn-info btn-sm" onclick="app.navigateTo('production')">عرض الكل</button>
+                            </div>
+                            <div class="table-wrapper">
+                                <table>
+                                    <thead><tr><th>النوع</th><th>المنتج</th><th>الكمية</th><th>التكلفة</th></tr></thead>
+                                    <tbody>
+                                        ${recentProd.length===0 ? '<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:1rem;">لا توجد أوامر</td></tr>' :
+                                        recentProd.map(o => \`<tr>
+                                            <td><span class="status-badge \${o.orderType==='ton'?'status-info':'status-warning'}" style="font-size:0.72rem;">\${o.orderType==='ton'?'طن':'كرتون'}</span></td>
+                                            <td><strong>\${o.productName||'—'}</strong></td>
+                                            <td style="font-size:0.82rem;">\${o.orderType==='carton'?(o.cartonCount||0)+' كرتون':(o.quantity||0)+' كيلو'}</td>
+                                            <td style="color:var(--primary);font-weight:700;">\${(o.totalCost||0).toLocaleString('ar-SA',{maximumFractionDigits:0})} ر.س</td>
+                                        </tr>\`).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- تنبيهات المخزون -->
+                    ${(lowStockRm.length > 0 || outStockRm.length > 0) ? `
+                    <div class="table-container">
                         <div class="table-header">
-                            <h4><i class="fas fa-exclamation-triangle" style="color:var(--warning);"></i> تنبيهات انخفاض المخزون</h4>
-                            <span class="status-badge ${lowStockItems.length > 0 ? 'status-danger' : 'status-success'}">${lowStockItems.length > 0 ? lowStockItems.length + ' عنصر منخفض' : 'المخزون بأمان'}</span>
+                            <h3><i class="fas fa-exclamation-triangle" style="color:#f97316;"></i> تنبيهات المخزون</h3>
+                            <span class="status-badge status-danger">${lowStockRm.length + outStockRm.length} تنبيه</span>
                         </div>
                         <div class="table-wrapper">
-                        <table><thead><tr><th>الكود</th><th>المادة</th><th>المخزون الحالي</th><th>الحد الأدنى</th><th>الحالة</th></tr></thead>
-                            <tbody>${lowStockItems.length === 0 ? '<tr><td colspan="5" class="text-center" style="padding:2rem;color:var(--success);"><i class="fas fa-check-circle" style="font-size:1.5rem;display:block;margin-bottom:0.5rem;"></i>جميع المواد بالمخزون الآمن</td></tr>' : lowStockItems.slice(0,10).map(m => `<tr><td><span style="font-family:monospace;font-weight:700;color:var(--primary);">${m.id}</span></td><td><strong>${m.name}</strong></td><td class="low-stock"><i class="fas fa-arrow-down"></i> ${m.quantity} ${m.unit}</td><td>${m.minStock} ${m.unit}</td><td><span class="status-badge status-danger">منخفض</span></td></tr>`).join('')}</tbody>
-                        </table>
+                            <table>
+                                <thead><tr><th>المادة</th><th>الرصيد الحالي</th><th>الحد الأدنى</th><th>الحالة</th><th>إجراء</th></tr></thead>
+                                <tbody>
+                                    ${[...outStockRm, ...lowStockRm].slice(0,8).map(m => `
+                                    <tr>
+                                        <td><strong>${m.name}</strong></td>
+                                        <td style="font-weight:700;color:${m.balance<=0?'#dc3545':'#f97316'};">${m.balance.toLocaleString('ar-SA')} ${m.unit||''}</td>
+                                        <td style="color:#64748b;">${(m.minStock||0)} ${m.unit||''}</td>
+                                        <td><span style="background:${m.balance<=0?'#dc3545':'#f97316'};color:#fff;padding:2px 8px;border-radius:1rem;font-size:0.75rem;font-weight:700;">${m.balance<=0?'نفد':'منخفض'}</span></td>
+                                        <td><button class="btn btn-primary btn-sm" onclick="app.navigateTo('purchases')" style="font-size:0.75rem;"><i class="fas fa-shopping-cart"></i> شراء</button></td>
+                                    </tr>`).join('')}
+                                </tbody>
+                            </table>
                         </div>
-                    </div>
-                    ${(() => {
-                        const productCostings = storage.get('productCostings') || [];
-                        if (productCostings.length === 0) return '';
-
-                        // تجميع الـ SKUs حسب المنتج الرئيسي
-                        const grouped = {};
-                        products.forEach(p => { grouped[p.id] = { product: p, skus: [] }; });
-                        productCostings.forEach(pc => {
-                            if (grouped[pc.productId]) {
-                                grouped[pc.productId].skus.push(pc);
-                            } else {
-                                // منتج غير موجود في products لكن موجود في costings
-                                grouped[pc.productId] = { product: { id: pc.productId, name: pc.productName || pc.productId, sellingPrice: 0, unit: '' }, skus: [pc] };
-                            }
-                        });
-
-                        // فلتر المنتجات التي عندها SKUs فقط
-                        const productGroups = Object.values(grouped).filter(g => g.skus.length > 0);
-                        if (productGroups.length === 0) return '';
-
-                        // ألوان خلفية للمنتجات الرئيسية
-                        const headerColors = [
-                            'linear-gradient(135deg,#1e6f9f,#155a82)',
-                            'linear-gradient(135deg,#059669,#047857)',
-                            'linear-gradient(135deg,#7c3aed,#6d28d9)',
-                            'linear-gradient(135deg,#d97706,#b45309)',
-                            'linear-gradient(135deg,#0891b2,#0e7490)',
-                            'linear-gradient(135deg,#dc2626,#b91c1c)',
-                        ];
-
-                        const rows = productGroups.map((g, gi) => {
-                            const p = g.product;
-                            const headerBg = headerColors[gi % headerColors.length];
-                            const skuRows = g.skus.map(sku => {
-                                const selling = p.sellingPrice || 0;
-                                const cartonCost = sku.totalCartonCost || 0;
-                                const margin = selling > 0 ? (((selling - cartonCost) / selling) * 100) : 0;
-                                const marginColor = margin >= 30 ? 'var(--success)' : margin >= 15 ? 'var(--warning)' : 'var(--danger)';
-                                const marginIcon = margin >= 30 ? 'fa-arrow-up' : margin >= 15 ? 'fa-minus' : 'fa-arrow-down';
-                                return `
-                                <tr style="background:var(--card-bg);transition:background 0.2s;" onmouseover="this.style.background='var(--primary-ultra-light)'" onmouseout="this.style.background='var(--card-bg)'">
-                                    <td style="font-family:monospace;font-weight:700;color:var(--primary);font-size:0.82rem;padding:0.65rem 0.75rem;">${sku.id}</td>
-                                    <td style="padding:0.65rem 0.75rem;">
-                                        <span style="font-weight:600;color:var(--text-primary);font-size:0.9rem;">${p.name}${sku.skuSize ? ' ' + sku.skuSize : ''}</span>
-                                    </td>
-                                    <td style="padding:0.65rem 0.75rem;color:var(--text-secondary);font-size:0.85rem;">${p.unit || 'حبة'}</td>
-                                    <td style="padding:0.65rem 0.75rem;">
-                                        <span style="background:var(--primary-ultra-light);color:var(--primary);padding:2px 10px;border-radius:20px;font-size:0.82rem;font-weight:700;">${sku.unitsPerCarton || '-'} عبوة</span>
-                                    </td>
-                                    <td style="padding:0.65rem 0.75rem;">
-                                        <span style="font-weight:800;color:var(--danger);font-size:0.92rem;">${cartonCost > 0 ? cartonCost.toFixed(2) : '—'}</span>
-                                        <span style="color:var(--text-secondary);font-size:0.75rem;"> ر.س</span>
-                                    </td>
-                                    <td style="padding:0.65rem 0.75rem;">
-                                        <span style="font-weight:800;color:var(--success);font-size:0.92rem;">${selling > 0 ? selling.toFixed(2) : '—'}</span>
-                                        <span style="color:var(--text-secondary);font-size:0.75rem;"> ر.س</span>
-                                    </td>
-                                    <td style="padding:0.65rem 0.75rem;">
-                                        <span style="display:inline-flex;align-items:center;gap:0.3rem;background:${marginColor}22;color:${marginColor};padding:3px 10px;border-radius:20px;font-weight:800;font-size:0.85rem;border:1px solid ${marginColor}44;">
-                                            <i class="fas ${marginIcon}" style="font-size:0.7rem;"></i>
-                                            ${margin > 0 ? margin.toFixed(1) + '%' : '—'}
-                                        </span>
-                                    </td>
-                                </tr>`;
-                            }).join('');
-
-                            return `
-                            <tr>
-                                <td colspan="7" style="padding:0;border:none;">
-                                    <div style="background:${headerBg};padding:0.75rem 1.1rem;display:flex;align-items:center;gap:0.75rem;margin-top:${gi > 0 ? '4px' : '0'};">
-                                        <div style="width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
-                                            <i class="fas fa-box" style="color:white;font-size:0.95rem;"></i>
-                                        </div>
-                                        <div>
-                                            <div style="color:white;font-weight:800;font-size:1rem;letter-spacing:0.3px;">${p.name}</div>
-                                            <div style="color:rgba(255,255,255,0.7);font-size:0.72rem;margin-top:1px;">${g.skus.length} حجم · ${p.id}</div>
-                                        </div>
-                                    </div>
-                                </td>
-                            </tr>
-                            ${skuRows}`;
-                        }).join('');
-
-                        return `
-                        <div style="margin-top:2rem;">
-                            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem;flex-wrap:wrap;gap:0.75rem;">
-                                <div style="display:flex;align-items:center;gap:0.6rem;">
-                                    <div style="width:38px;height:38px;border-radius:10px;background:var(--grad-primary);display:flex;align-items:center;justify-content:center;">
-                                        <i class="fas fa-table" style="color:white;font-size:1rem;"></i>
-                                    </div>
-                                    <div>
-                                        <h3 style="font-size:1.1rem;font-weight:800;color:var(--text-primary);margin:0;">ملخص المنتجات والتكاليف</h3>
-                                        <p style="font-size:0.78rem;color:var(--text-secondary);margin:0;">${productGroups.length} منتج · ${productCostings.length} حجم (SKU)</p>
-                                    </div>
-                                </div>
-                                <button class="btn btn-sm btn-outline-primary" onclick="app.navigateTo('productCosting')">
-                                    <i class="fas fa-calculator"></i> إدارة التكاليف
-                                </button>
-                            </div>
-                            <div class="table-container" style="border-radius:var(--radius-lg);overflow:hidden;box-shadow:var(--shadow);">
-                                <div class="table-wrapper" style="overflow-x:auto;">
-                                    <table style="width:100%;border-collapse:collapse;min-width:650px;">
-                                        <thead>
-                                            <tr style="background:var(--gray-100);border-bottom:2px solid var(--border-color);">
-                                                <th style="padding:0.75rem 0.75rem;text-align:right;font-size:0.82rem;color:var(--text-secondary);font-weight:700;white-space:nowrap;">كود الصنف</th>
-                                                <th style="padding:0.75rem 0.75rem;text-align:right;font-size:0.82rem;color:var(--text-secondary);font-weight:700;">اسم الصنف</th>
-                                                <th style="padding:0.75rem 0.75rem;text-align:right;font-size:0.82rem;color:var(--text-secondary);font-weight:700;">الوحدة</th>
-                                                <th style="padding:0.75rem 0.75rem;text-align:right;font-size:0.82rem;color:var(--text-secondary);font-weight:700;white-space:nowrap;">التعبئة</th>
-                                                <th style="padding:0.75rem 0.75rem;text-align:right;font-size:0.82rem;color:var(--text-secondary);font-weight:700;white-space:nowrap;">تكلفة الكرتون</th>
-                                                <th style="padding:0.75rem 0.75rem;text-align:right;font-size:0.82rem;color:var(--text-secondary);font-weight:700;white-space:nowrap;">سعر البيع</th>
-                                                <th style="padding:0.75rem 0.75rem;text-align:right;font-size:0.82rem;color:var(--text-secondary);font-weight:700;white-space:nowrap;">هامش الربح</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>${rows}</tbody>
-                                    </table>
-                                </div>
-                            </div>
-                        </div>`;
-                    })()}
+                    </div>` : `
+                    <div style="background:#f0fdf4;border-radius:10px;padding:1rem 1.5rem;display:flex;align-items:center;gap:0.75rem;color:#065f46;">
+                        <i class="fas fa-check-circle" style="font-size:1.5rem;color:#10b981;"></i>
+                        <strong>جميع المواد الخام بمستوى مخزون آمن ✅</strong>
+                    </div>`}
                 `;
-                container.innerHTML = html;
-                setTimeout(() => this.initDashboardCharts(rawMaterials, products), 100);
+
+                // رسوم بيانية
+                setTimeout(() => {
+                    // مبيعات شهرية
+                    const ctx1 = document.getElementById('dbMonthlySales');
+                    if (ctx1) new Chart(ctx1, {
+                        type: 'line',
+                        data: {
+                            labels: ${JSON.stringify(mKeys)},
+                            datasets: [{
+                                label: 'المبيعات (ر.س)',
+                                data: ${JSON.stringify(mVals)},
+                                borderColor: '#10b981',
+                                backgroundColor: 'rgba(16,185,129,0.1)',
+                                borderWidth: 2,
+                                fill: true,
+                                tension: 0.4,
+                                pointRadius: 4,
+                                pointBackgroundColor: '#10b981'
+                            }]
+                        },
+                        options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+                    });
+
+                    // توزيع المخزون
+                    const ctx2 = document.getElementById('dbInventoryPie');
+                    const rawCount = rawMaterials.filter(m=>m.materialType!=='packaging').length;
+                    const pkgCount = rawMaterials.filter(m=>m.materialType==='packaging').length;
+                    if (ctx2) new Chart(ctx2, {
+                        type: 'doughnut',
+                        data: {
+                            labels: ['مواد خام', 'مواد تعبئة', 'منتجات نهائية'],
+                            datasets: [{ data: [rawCount, pkgCount, products.length], backgroundColor: ['#3b82f6','#7c3aed','#10b981'], borderWidth: 0 }]
+                        },
+                        options: { responsive: true, plugins: { legend: { position: 'bottom' } }, cutout: '65%' }
+                    });
+                }, 150);
             }
 
-            initDashboardCharts(rawMaterials, products) {
-                const sortedMaterials = [...rawMaterials].sort((a, b) => (b.costPrice * b.quantity) - (a.costPrice * a
-                    .quantity)).slice(0, 10);
-                const ctx1 = document.getElementById('chartMaterialsCost');
-                if (ctx1) {
-                    new Chart(ctx1, {
-                        type: 'bar',
-                        data: {
-                            labels: sortedMaterials.map(m => m.name.substring(0, 14)),
-                            datasets: [{ label: 'التكلفة الإجمالية (ر.س)', data: sortedMaterials.map(m => m
-                                    .costPrice * m.quantity),
-                                backgroundColor: sortedMaterials.map((_, i) => `hsla(${200 + i*8},70%,52%,0.82)`),
-                                borderColor: sortedMaterials.map((_, i) => `hsl(${200 + i*8},70%,40%)`),
-                                borderWidth: 1.5, borderRadius: 6 }]
-                        },
-                        options: { responsive: true, plugins: { legend: { display: false },
-                            tooltip: { callbacks: { label: ctx => ' ' + Number(ctx.raw).toLocaleString('ar-SA') + ' ر.س' } } },
-                            scales: { y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
-                                x: { grid: { display: false } } } }
-                    });
-                }
-                const sortedProducts = [...products].slice(0, 10);
-                const ctx2 = document.getElementById('chartProducts');
-                if (ctx2) {
-                    new Chart(ctx2, {
-                        type: 'bar',
-                        data: {
-                            labels: sortedProducts.map(p => p.name.substring(0, 12)),
-                            datasets: [
-                                { label: 'المخزون', data: sortedProducts.map(p => p.stock),
-                                    backgroundColor: 'rgba(5,150,105,0.75)', borderColor: '#059669',
-                                    borderWidth: 1.5, borderRadius: 5 },
-                                { label: 'سعر البيع', data: sortedProducts.map(p => p.sellingPrice),
-                                    backgroundColor: 'rgba(249,115,22,0.75)', borderColor: '#f97316',
-                                    borderWidth: 1.5, borderRadius: 5 }
-                            ]
-                        },
-                        options: { responsive: true,
-                            plugins: { legend: { position: 'top', labels: { font: { family: 'Cairo' }, boxWidth: 12 } } },
-                            scales: { y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
-                                x: { grid: { display: false } } } }
-                    });
-                }
-            }
 
             // ============================================
             // RENDER PRODUCT SUMMARY MODULE
