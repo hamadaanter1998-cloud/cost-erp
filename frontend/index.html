@@ -1662,8 +1662,8 @@
                 `;
 
                 // رسوم بيانية
-                const _mKeys = ${JSON.stringify(mKeys)};
-                const _mVals = ${JSON.stringify(mVals)};
+                const _mKeys = JSON.stringify(mKeys);
+                const _mVals = JSON.stringify(mVals);
                 const _rawCount = rawMaterials.filter(m=>m.materialType!=='packaging').length;
                 const _pkgCount = rawMaterials.filter(m=>m.materialType==='packaging').length;
                 setTimeout(() => {
