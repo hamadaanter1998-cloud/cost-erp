@@ -1662,16 +1662,19 @@
                 `;
 
                 // رسوم بيانية
+                const _mKeys = ${JSON.stringify(mKeys)};
+                const _mVals = ${JSON.stringify(mVals)};
+                const _rawCount = rawMaterials.filter(m=>m.materialType!=='packaging').length;
+                const _pkgCount = rawMaterials.filter(m=>m.materialType==='packaging').length;
                 setTimeout(() => {
-                    // مبيعات شهرية
                     const ctx1 = document.getElementById('dbMonthlySales');
                     if (ctx1) new Chart(ctx1, {
                         type: 'line',
                         data: {
-                            labels: ${JSON.stringify(mKeys)},
+                            labels: _mKeys,
                             datasets: [{
                                 label: 'المبيعات (ر.س)',
-                                data: ${JSON.stringify(mVals)},
+                                data: _mVals,
                                 borderColor: '#10b981',
                                 backgroundColor: 'rgba(16,185,129,0.1)',
                                 borderWidth: 2,
@@ -1683,16 +1686,12 @@
                         },
                         options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
                     });
-
-                    // توزيع المخزون
                     const ctx2 = document.getElementById('dbInventoryPie');
-                    const rawCount = rawMaterials.filter(m=>m.materialType!=='packaging').length;
-                    const pkgCount = rawMaterials.filter(m=>m.materialType==='packaging').length;
                     if (ctx2) new Chart(ctx2, {
                         type: 'doughnut',
                         data: {
                             labels: ['مواد خام', 'مواد تعبئة', 'منتجات نهائية'],
-                            datasets: [{ data: [rawCount, pkgCount, products.length], backgroundColor: ['#3b82f6','#7c3aed','#10b981'], borderWidth: 0 }]
+                            datasets: [{ data: [_rawCount, _pkgCount, products.length], backgroundColor: ['#3b82f6','#7c3aed','#10b981'], borderWidth: 0 }]
                         },
                         options: { responsive: true, plugins: { legend: { position: 'bottom' } }, cutout: '65%' }
                     });
