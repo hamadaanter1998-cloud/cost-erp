@@ -1595,12 +1595,12 @@
                                         recentSales.map(o => {
                                             const sc={draft:'status-secondary',confirmed:'status-info',delivered:'status-success',cancelled:'status-danger'};
                                             const sl={draft:'مسودة',confirmed:'مؤكد',delivered:'مسلّم',cancelled:'ملغي'};
-                                            return \`<tr>
-                                                <td style="font-family:monospace;font-size:0.8rem;color:var(--primary);">\${o.orderNumber}</td>
-                                                <td><strong>\${o.customerName||'—'}</strong></td>
-                                                <td style="color:var(--success);font-weight:700;">\${(o.totalAmount||0).toLocaleString('ar-SA',{maximumFractionDigits:0})} ر.س</td>
-                                                <td><span class="status-badge \${sc[o.status]||'status-secondary'}" style="font-size:0.72rem;">\${sl[o.status]||o.status}</span></td>
-                                            </tr>\`;
+                                            return '<tr>' +
+                                                '<td style="font-family:monospace;font-size:0.8rem;color:var(--primary);">' + o.orderNumber + '</td>' +
+                                                '<td><strong>' + (o.customerName||'—') + '</strong></td>' +
+                                                '<td style="color:var(--success);font-weight:700;">' + (o.totalAmount||0).toLocaleString('ar-SA',{maximumFractionDigits:0}) + ' ر.س</td>' +
+                                                '<td><span class="status-badge ' + (sc[o.status]||'status-secondary') + '" style="font-size:0.72rem;">' + (sl[o.status]||o.status) + '</span></td>' +
+                                            '</tr>';
                                         }).join('')}
                                     </tbody>
                                 </table>
@@ -1618,12 +1618,14 @@
                                     <thead><tr><th>النوع</th><th>المنتج</th><th>الكمية</th><th>التكلفة</th></tr></thead>
                                     <tbody>
                                         ${recentProd.length===0 ? '<tr><td colspan="4" style="text-align:center;color:#94a3b8;padding:1rem;">لا توجد أوامر</td></tr>' :
-                                        recentProd.map(o => \`<tr>
-                                            <td><span class="status-badge \${o.orderType==='ton'?'status-info':'status-warning'}" style="font-size:0.72rem;">\${o.orderType==='ton'?'طن':'كرتون'}</span></td>
-                                            <td><strong>\${o.productName||'—'}</strong></td>
-                                            <td style="font-size:0.82rem;">\${o.orderType==='carton'?(o.cartonCount||0)+' كرتون':(o.quantity||0)+' كيلو'}</td>
-                                            <td style="color:var(--primary);font-weight:700;">\${(o.totalCost||0).toLocaleString('ar-SA',{maximumFractionDigits:0})} ر.س</td>
-                                        </tr>\`).join('')}
+                                        recentProd.map(o =>
+                                            '<tr>' +
+                                            '<td><span class="status-badge ' + (o.orderType==='ton'?'status-info':'status-warning') + '" style="font-size:0.72rem;">' + (o.orderType==='ton'?'طن':'كرتون') + '</span></td>' +
+                                            '<td><strong>' + (o.productName||'—') + '</strong></td>' +
+                                            '<td style="font-size:0.82rem;">' + (o.orderType==='carton'?(o.cartonCount||0)+' كرتون':(o.quantity||0)+' كيلو') + '</td>' +
+                                            '<td style="color:var(--primary);font-weight:700;">' + (o.totalCost||0).toLocaleString('ar-SA',{maximumFractionDigits:0}) + ' ر.س</td>' +
+                                            '</tr>'
+                                        ).join('')}
                                     </tbody>
                                 </table>
                             </div>
