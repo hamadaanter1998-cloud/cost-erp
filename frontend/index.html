@@ -810,27 +810,26 @@
                     </div>`}
                 `;
 
-                // رسوم بيانية
-                const _mKeys = ${JSON.stringify(mKeys)};
-                const _mVals = ${JSON.stringify(mVals)};
-                const _rawCount = rawMaterials.filter(m=>m.materialType!=='packaging').length;
-                const _pkgCount = rawMaterials.filter(m=>m.materialType==='packaging').length;
+                // رسوم بيانية — نحفظ البيانات في window عشان نستخدمها بعد الـ render
+                window._dbChartData = { mKeys, mVals,
+                    rawCount: rawMaterials.filter(m=>m.materialType!=='packaging').length,
+                    pkgCount: rawMaterials.filter(m=>m.materialType==='packaging').length,
+                    prodCount: products.length
+                };
                 setTimeout(() => {
+                    const d = window._dbChartData || {};
                     const ctx1 = document.getElementById('dbMonthlySales');
                     if (ctx1) new Chart(ctx1, {
                         type: 'line',
                         data: {
-                            labels: _mKeys,
+                            labels: d.mKeys || [],
                             datasets: [{
                                 label: 'المبيعات (ر.س)',
-                                data: _mVals,
+                                data: d.mVals || [],
                                 borderColor: '#10b981',
                                 backgroundColor: 'rgba(16,185,129,0.1)',
-                                borderWidth: 2,
-                                fill: true,
-                                tension: 0.4,
-                                pointRadius: 4,
-                                pointBackgroundColor: '#10b981'
+                                borderWidth: 2, fill: true, tension: 0.4,
+                                pointRadius: 4, pointBackgroundColor: '#10b981'
                             }]
                         },
                         options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
@@ -840,7 +839,7 @@
                         type: 'doughnut',
                         data: {
                             labels: ['مواد خام', 'مواد تعبئة', 'منتجات نهائية'],
-                            datasets: [{ data: [_rawCount, _pkgCount, products.length], backgroundColor: ['#3b82f6','#7c3aed','#10b981'], borderWidth: 0 }]
+                            datasets: [{ data: [d.rawCount||0, d.pkgCount||0, d.prodCount||0], backgroundColor: ['#3b82f6','#7c3aed','#10b981'], borderWidth: 0 }]
                         },
                         options: { responsive: true, plugins: { legend: { position: 'bottom' } }, cutout: '65%' }
                     });
