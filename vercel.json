@@ -1,5 +1,15 @@
 {
   "version": 2,
-  "outputDirectory": "frontend",
-  "buildCommand": "echo done"
+  "builds": [
+    {
+      "src": "frontend/index.html",
+      "use": "@vercel/static"
+    }
+  ],
+  "routes": [
+    { "src": "/styles/(.*)", "dest": "/frontend/styles/$1" },
+    { "src": "/modules/(.*)", "dest": "/frontend/modules/$1" },
+    { "src": "/api.js", "dest": "/frontend/api.js" },
+    { "src": "/(.*)", "dest": "/frontend/$1" }
+  ]
 }
