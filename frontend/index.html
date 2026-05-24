@@ -4312,10 +4312,12 @@
 
         // ============================================
         // INITIALIZE APPLICATION
+        // تأخير التهيئة حتى تحمّل جميع الـ modules
         // ============================================
-        const app = new AppController();
+        window._appInit = function() {
+            window.app = new AppController();
 
-        const savedDarkMode = storage.get('darkMode');
+            const savedDarkMode = storage.get('darkMode');
         if (savedDarkMode) {
             darkMode = savedDarkMode;
             if (darkMode) {
@@ -4444,6 +4446,8 @@
         if (window.location.hash) {
             handleHashRouting();
         }
+
+        }; // end _appInit
 
         // Listen for hash changes
         window.addEventListener('hashchange', handleHashRouting);
@@ -5181,6 +5185,10 @@
     <script src="modules/production.js"></script>
     <script src="modules/rawMaterials.js"></script>
     <script src="modules/products.js"></script>
+    <script>
+        // تهيئة التطبيق بعد تحميل جميع الـ modules
+        if (typeof window._appInit === 'function') window._appInit();
+    </script>
 
 </body>
 </html>

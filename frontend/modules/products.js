@@ -602,5 +602,6 @@ proto.showProductMovement = function(prodId) {
                 }).then(result => {
                     if (result.isConfirmed) this.showSaleModal();
                 });
+};
 
 })(typeof AppController !== 'undefined' ? AppController.prototype : window);
