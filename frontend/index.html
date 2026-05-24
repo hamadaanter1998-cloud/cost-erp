@@ -839,6 +839,7 @@
                 const rows = rawMaterials.map(m => [m.id, m.name, m.unit, m.costPrice, m.invoiceNo, m.supplier, m.purchaseDate, m.quantity, m.minStock]);
                 this._makeXlsx([{ name: 'المواد الخام', headers, rows, colWidths: [12, 22, 8, 16, 14, 20, 14, 10, 12] }], 'المواد_الخام.xlsx');
                 storage.showToast('تم تصدير المواد الخام بنجاح');
+            }
 
             exportProducts() {
                 const products = storage.get('products') || [];
