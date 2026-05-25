@@ -1,11 +1,6 @@
 {
   "version": 2,
-  "builds": [
-    { "src": "frontend/**", "use": "@vercel/static" }
-  ],
-  "routes": [
-    { "src": "/(.*\\.js)", "dest": "/frontend/$1" },
-    { "src": "/(.*\\.css)", "dest": "/frontend/$1" },
-    { "src": "/(.*)", "dest": "/frontend/$1" }
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/frontend/$1" }
   ]
 }
