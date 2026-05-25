@@ -4432,25 +4432,18 @@
             }
         }, true);
 
-        // Handle hash routing for external tabs
-        function handleHashRouting() {
-            const hash = window.location.hash.substring(1);
-            if (hash && typeof app !== 'undefined' && app.navigateTo) {
-                setTimeout(() => {
-                    app.navigateTo(hash);
-                }, 1000);
-            }
-        }
-
-        // Check hash on page load
-        if (window.location.hash) {
-            handleHashRouting();
-        }
-
         }; // end _appInit
 
+        // Handle hash routing for external tabs
+        window.handleHashRouting = function() {
+            const hash = window.location.hash.substring(1);
+            if (hash && typeof window.app !== 'undefined' && window.app.navigateTo) {
+                setTimeout(() => { window.app.navigateTo(hash); }, 1000);
+            }
+        };
+
         // Listen for hash changes
-        window.addEventListener('hashchange', handleHashRouting);
+        window.addEventListener('hashchange', window.handleHashRouting);
     </script>
 
     <!-- ============================================ -->
@@ -5178,16 +5171,18 @@
     </script>
 
     <!-- ═══ Modules ═══ -->
-    <script src="modules/dashboard.js"></script>
-    <script src="modules/reports.js"></script>
-    <script src="modules/sales.js"></script>
-    <script src="modules/purchases.js"></script>
-    <script src="modules/production.js"></script>
-    <script src="modules/rawMaterials.js"></script>
-    <script src="modules/products.js"></script>
+    <script src="dashboard.js"></script>
+    <script src="reports.js"></script>
+    <script src="sales.js"></script>
+    <script src="purchases.js"></script>
+    <script src="production.js"></script>
+    <script src="rawMaterials.js"></script>
+    <script src="products.js"></script>
     <script>
         // تهيئة التطبيق بعد تحميل جميع الـ modules
         if (typeof window._appInit === 'function') window._appInit();
+        // Check hash on page load
+        if (window.location.hash) window.handleHashRouting();
     </script>
 
 </body>
