@@ -501,7 +501,26 @@
                     default:
                         this.renderDashboard(pageContent);
                 }
-                this.logActivity('فتح صفحة: ' + this.getPageTitle(page), 'info');
+                if (typeof this.logActivity === 'function') this.logActivity('فتح صفحة: ' + this.getPageTitle(page), 'info');
+            }
+
+            // fallback في حال لم يتحمل settings.js بعد
+            logActivity(action, type) {
+                try {
+                    const log = storage.get('activityLog') || [];
+                    log.unshift({ action, type: type||'info', timestamp: new Date().toISOString() });
+                    storage.set('activityLog', log.slice(0, 100));
+                } catch(e) {}
+            }
+
+            addNotification(message, type) {
+                try {
+                    const notifs = storage.get('notifications') || [];
+                    notifs.unshift({ id: crypto.randomUUID(), message, type: type||'info', read: false, createdAt: new Date().toISOString() });
+                    storage.set('notifications', notifs.slice(0, 50));
+                    const badge = document.getElementById('notifBadge');
+                    if (badge) badge.textContent = notifs.filter(n=>!n.read).length;
+                } catch(e) {}
             }
 
             getPageTitle(page) {
@@ -2966,9 +2985,9 @@ proto.applySkuSizeTemplate = function(templateId) {
                 if (unitsEl) unitsEl.value = tmpl.unitsPerCarton;
                 this.calcSkuTotal();
                 storage.showToast(`✅ "${tmpl.name}" — ${tmpl.unitsPerCarton} عبوة × ${tmpl.sizeLiters}ل`);
-            }
+};
 
-                        async addUnitModal() {
+proto.addUnitModal = async function() {
                 Swal.fire({
                     title: 'إضافة وحدة جديدة',
                     html: `<div class="form-group"><label>اسم الوحدة</label><input type="text" id="newUnitName" class="form-control" placeholder="مثال: حبة، كرتون، متر..."></div>`,
