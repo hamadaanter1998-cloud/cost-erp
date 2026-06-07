@@ -2727,6 +2727,13 @@
 
 (function(proto) {
 
+proto.getUnitsOptions = function(selectedVal = '') {
+    const units = storage.get('units') || [];
+    return units.map(u =>
+        `<option value="${u.name}" ${u.name === selectedVal ? 'selected' : ''}>${u.name}</option>`
+    ).join('');
+};
+
 proto.logActivity = function(action, type = 'info') {
                 const log = storage.get('activityLog') || [];
                 log.unshift({ action, user: currentUser?.username || 'system', timestamp: new Date().toISOString(),

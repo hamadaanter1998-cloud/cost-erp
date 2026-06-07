@@ -4,6 +4,13 @@
 
 (function(proto) {
 
+proto.getUnitsOptions = function(selectedVal = '') {
+    const units = storage.get('units') || [];
+    return units.map(u =>
+        `<option value="${u.name}" ${u.name === selectedVal ? 'selected' : ''}>${u.name}</option>`
+    ).join('');
+};
+
 proto.logActivity = function(action, type = 'info') {
                 const log = storage.get('activityLog') || [];
                 log.unshift({ action, user: currentUser?.username || 'system', timestamp: new Date().toISOString(),
@@ -262,9 +269,9 @@ proto.applySkuSizeTemplate = function(templateId) {
                 if (unitsEl) unitsEl.value = tmpl.unitsPerCarton;
                 this.calcSkuTotal();
                 storage.showToast(`✅ "${tmpl.name}" — ${tmpl.unitsPerCarton} عبوة × ${tmpl.sizeLiters}ل`);
-            }
+};
 
-                        async addUnitModal() {
+proto.addUnitModal = async function() {
                 Swal.fire({
                     title: 'إضافة وحدة جديدة',
                     html: `<div class="form-group"><label>اسم الوحدة</label><input type="text" id="newUnitName" class="form-control" placeholder="مثال: حبة، كرتون، متر..."></div>`,
